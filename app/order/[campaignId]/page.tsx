@@ -66,17 +66,6 @@ export default async function OrderPage({
     .eq("campaign_id", campaignId)
     .order("display_order");
 
-  if (!complexes || complexes.length === 0) {
-    return (
-      <main className="max-w-md mx-auto p-5">
-        <BuyerNav campaignId={campaignId} active="order" />
-        <p className="text-center text-neutral-500 py-20">
-          아직 배송 가능한 지역이 등록되지 않아 주문을 받을 수 없습니다.
-        </p>
-      </main>
-    );
-  }
-
   return (
     <main className="max-w-md mx-auto p-5">
       <BuyerNav campaignId={campaignId} active="order" />
@@ -84,7 +73,7 @@ export default async function OrderPage({
         campaignId={campaignId}
         title={campaign.title}
         products={products ?? []}
-        complexes={complexes}
+        complexes={complexes ?? []}
       />
     </main>
   );

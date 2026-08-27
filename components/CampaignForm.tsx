@@ -37,6 +37,8 @@ export default function CampaignForm({
   const [startTime, setStartTime] = useState(() => nextHour().time);
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
+  const [deliveryMode, setDeliveryMode] = useState<"직접배송" | "위임배송">("직접배송");
+  const [deliveryFee, setDeliveryFee] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -121,6 +123,8 @@ export default function CampaignForm({
         inquiryUrl,
         startAt,
         closeDeadline,
+        deliveryMode,
+        deliveryFeePerOrder: Number(deliveryFee.replace(/[^0-9]/g, "")) || 0,
         complexes: validComplexes,
         products: products.map((p) => ({
           name: p.name,
@@ -213,6 +217,37 @@ export default function CampaignForm({
           + 단지 추가
         </button>
       </div>
+
+      <p className="text-[12px] text-neutral-500 mb-1.5">배송 방식</p>
+      <div className="flex gap-2 mb-3">
+        <button
+          type="button"
+          onClick={() => setDeliveryMode("직접배송")}
+          className={`flex-1 border rounded-lg py-2 text-[13px] ${
+            deliveryMode === "직접배송" ? "bg-neutral-900 text-white" : ""
+          }`}
+        >
+          직접배송
+        </button>
+        <button
+          type="button"
+          onClick={() => setDeliveryMode("위임배송")}
+          className={`flex-1 border rounded-lg py-2 text-[13px] ${
+            deliveryMode === "위임배송" ? "bg-neutral-900 text-white" : ""
+          }`}
+        >
+          위임배송
+        </button>
+      </div>
+      {deliveryMode === "위임배송" && (
+        <input
+          className="w-full border rounded px-3 py-2 text-sm mb-3"
+          placeholder="건당 배송비 (배송담당자 정산 기준, 원)"
+          inputMode="numeric"
+          value={deliveryFee}
+          onChange={(e) => setDeliveryFee(formatNumberWithCommas(e.target.value))}
+        />
+      )}
 
       <p className="text-[12px] text-neutral-500 mb-1.5">상품 (최대 3개)</p>
       <div className="flex flex-col gap-2 mb-3">

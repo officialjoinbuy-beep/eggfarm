@@ -516,7 +516,278 @@ $$;
 -- insert into storage.buckets (id, name, public) values ('product-images', 'product-images', true);
 
 -- ============================================================
--- 공구 삭제 함수 (마감된 공구 + 관련 주문/상품/로그 전부 삭제)
+-- v7 확장: 현장픽업/현장결제, 배송담당자, 노쇼관리
+-- ============================================================
+
+-- orders: 수령방법/결제방법/픽업상태/QR토큰 추가
+alter table public.orders
+  alter column address drop not null; -- 현장픽업은 주소가 없을 수 있음
+
+alter table public.orders
+  add column if not exists fulfillment_type text not null default '배송'
+    check (fulfillment_type in ('배송', '픽업')),
+  add column if not exists payment_method text not null default '계좌이체'
+    check (payment_method in ('계좌이체', '현장결제')),
+  add column if not exists pickup_status text
+    check (pickup_status in ('수령대기', '수령완료', '노쇼')),
+  add column if not exists pickup_token text unique; -- QR코드에 담기는 추측불가 토큰
+
+-- campaigns: 배송방식(직접/위임) + 건당 배송비
+alter table public.campaigns
+  add column if not exists delivery_mode text not null default '직접배송'
+    check (delivery_mode in ('직접배송', '위임배송')),
+  add column if not exists delivery_fee_per_order int not null default 0;
+
+-- ------------------------------------------------------------
+-- 배송담당자 링크 (공구+담당단지 단위로 발급, 로그인 없이 토큰으로만 접근)
+-- ------------------------------------------------------------
+create table public.delivery_staff_links (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references public.campaigns(id) on delete cascade,
+  token text not null unique,
+  complex_ids uuid[] not null default '{}', -- 담당하는 campaign_complexes.id 목록
+  fee_per_order int not null default 0,
+  expires_at timestamptz not null,
+  revoked boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.delivery_staff_links enable row level security;
+create policy "owner_select_staff_links" on public.delivery_staff_links
+  for select using (
+    exists (select 1 from public.campaigns c where c.id = campaign_id and c.owner_id = auth.uid())
+  );
+create policy "owner_insert_staff_links" on public.delivery_staff_links
+  for insert with check (
+    exists (select 1 from public.campaigns c where c.id = campaign_id and c.owner_id = auth.uid())
+  );
+create policy "owner_update_staff_links" on public.delivery_staff_links
+  for update using (
+    exists (select 1 from public.campaigns c where c.id = campaign_id and c.owner_id = auth.uid())
+  );
+-- 배송담당자 본인(비로그인)의 접근은 service_role(서버 API)을 통해서만 처리.
+
+-- ------------------------------------------------------------
+-- 노쇼 기록 (전화번호는 HMAC 해시로만 저장 - 원본 복원 불가)
+-- ------------------------------------------------------------
+create table public.noshow_records (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  phone_hash text not null,
+  order_id uuid references public.orders(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index idx_noshow_owner_phone on public.noshow_records (owner_id, phone_hash);
+alter table public.noshow_records enable row level security;
+create policy "owner_select_noshow" on public.noshow_records
+  for select using (auth.uid() = owner_id);
+create policy "owner_insert_noshow" on public.noshow_records
+  for insert with check (auth.uid() = owner_id);
+
+-- 2회 이상 노쇼면 차단 대상
+create or replace function public.is_noshow_blocked(p_owner_id uuid, p_phone_hash text)
+returns boolean
+language sql
+as $$
+  select count(*) >= 2
+  from public.noshow_records
+  where owner_id = p_owner_id and phone_hash = p_phone_hash;
+$$;
+
+-- ------------------------------------------------------------
+-- 현장픽업/현장결제 주문 생성 RPC (배송 주문과 재고 로직은 동일, 주소만 다름)
+-- ------------------------------------------------------------
+create or replace function public.create_pickup_order(
+  p_campaign_id uuid,
+  p_nickname text,
+  p_phone text,
+  p_pin_hash text,
+  p_payment_method text, -- '계좌이체' | '현장결제'
+  p_items jsonb,
+  p_payment_timeout_minutes int
+)
+returns uuid
+language plpgsql
+as $$
+declare
+  v_order_id uuid;
+  v_item jsonb;
+  v_total int := 0;
+  v_unit_price int;
+  v_product_name text;
+  v_is_closed boolean;
+begin
+  select is_closed into v_is_closed from public.campaigns where id = p_campaign_id for update;
+  if v_is_closed then
+    raise exception 'CAMPAIGN_CLOSED';
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    perform public.reserve_stock(
+      (v_item->>'product_id')::uuid,
+      (v_item->>'quantity')::int
+    );
+  end loop;
+
+  select sum((oi->>'quantity')::int * p.price), null into v_total, v_unit_price
+  from jsonb_array_elements(p_items) oi
+  join public.products p on p.id = (oi->>'product_id')::uuid;
+
+  insert into public.orders (
+    campaign_id, nickname, phone, pin_hash, address,
+    fulfillment_type, payment_method, pickup_status, pickup_token,
+    total_amount, payment_status, payment_deadline, consent_agreed
+  ) values (
+    p_campaign_id, p_nickname, p_phone, p_pin_hash, null,
+    '픽업', p_payment_method,
+    case when p_payment_method = '현장결제' then '수령대기' else null end,
+    encode(gen_random_bytes(16), 'hex'),
+    v_total,
+    case when p_payment_method = '현장결제' then '입금확인완료' else '입금확인대기' end,
+    case when p_payment_method = '현장결제' then null
+         else now() + (p_payment_timeout_minutes || ' minutes')::interval end,
+    true
+  ) returning id into v_order_id;
+
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    select price, name into v_unit_price, v_product_name
+    from public.products where id = (v_item->>'product_id')::uuid;
+
+    insert into public.order_items (order_id, product_id, product_name_snapshot, quantity, unit_price)
+    values (
+      v_order_id,
+      (v_item->>'product_id')::uuid,
+      v_product_name,
+      (v_item->>'quantity')::int,
+      v_unit_price
+    );
+  end loop;
+
+  return v_order_id;
+end;
+$$;
+
+-- 입금확인 처리 시 픽업 주문이면 배송상태 대신 픽업상태를 갱신하도록 확장
+create or replace function public.confirm_payment(p_order_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_fulfillment text;
+begin
+  select fulfillment_type into v_fulfillment from public.orders where id = p_order_id;
+
+  update public.orders
+  set payment_status = '입금확인완료',
+      payment_deadline = null,
+      pickup_status = case when v_fulfillment = '픽업' then '수령대기' else pickup_status end
+  where id = p_order_id and payment_status = '입금확인대기';
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, '입금확인대기', '입금확인완료');
+end;
+$$;
+
+-- 여러 건 한번에 입금확인 처리
+create or replace function public.bulk_confirm_payment(p_order_ids uuid[])
+returns void
+language plpgsql
+as $$
+begin
+  update public.orders
+  set payment_status = '입금확인완료',
+      payment_deadline = null,
+      pickup_status = case when fulfillment_type = '픽업' then '수령대기' else pickup_status end
+  where id = any(p_order_ids) and payment_status = '입금확인대기';
+end;
+$$;
+
+-- 픽업 상태 변경 (수령완료 / 노쇼) - 조건부 업데이트로 동시처리 안전
+create or replace function public.set_pickup_status(p_order_id uuid, p_to text)
+returns void
+language plpgsql
+as $$
+declare
+  v_from text;
+begin
+  select pickup_status into v_from from public.orders where id = p_order_id;
+
+  update public.orders
+  set pickup_status = p_to
+  where id = p_order_id and pickup_status = '수령대기';
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, coalesce(v_from, ''), p_to);
+end;
+$$;
+
+-- 배송상태 변경을 조건부(현재 상태 일치 시에만)로 개선 - 동시처리 안전장치 통일
+create or replace function public.set_delivery_status_safe(p_order_id uuid, p_from delivery_status, p_to delivery_status)
+returns void
+language plpgsql
+as $$
+begin
+  update public.orders
+  set delivery_status = p_to,
+      delivery_completed_at = case when p_to = '배송완료' then now() else null end,
+      delivery_photo_url = case when p_to <> '배송완료' then null else delivery_photo_url end
+  where id = p_order_id and delivery_status = p_from;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, p_from::text, p_to::text);
+end;
+$$;
+
+-- ============================================================
+-- 개인정보 자동폐기 확장 (단지명/동/호수/출입비밀번호도 함께 삭제)
+-- 배송사진 파일 자체(Storage)는 SQL로 지울 수 없어 별도 API에서 처리
+-- ============================================================
+create or replace function public.purge_expired_personal_data()
+returns void
+language plpgsql
+as $$
+begin
+  update public.orders o
+  set nickname = '[삭제됨]',
+      phone = '[삭제됨]',
+      address = '[삭제됨]',
+      pin_hash = '[삭제됨]',
+      complex_name = null,
+      dong = null,
+      unit_no = null,
+      entry_password = null
+  from public.campaigns c
+  where o.campaign_id = c.id
+    and o.delivery_status = '배송완료'
+    and o.delivery_completed_at < now() - (c.data_retention_days || ' days')::interval
+    and o.nickname <> '[삭제됨]';
+end;
+$$;
+
+-- 배송사진 삭제 대상(파일 경로) 조회용 - API에서 이 목록을 받아 Storage에서 삭제 후
+-- delivery_photo_url을 null로 비운다 (SQL 함수는 아래에 별도로 둠)
+create or replace function public.list_expired_photo_paths()
+returns table(order_id uuid, photo_path text)
+language sql
+as $$
+  select o.id, o.delivery_photo_url
+  from public.orders o
+  join public.campaigns c on c.id = o.campaign_id
+  where o.delivery_status = '배송완료'
+    and o.delivery_photo_url is not null
+    and o.delivery_completed_at < now() - (c.data_retention_days || ' days')::interval;
+$$;
+
+create or replace function public.clear_photo_url(p_order_id uuid)
+returns void
+language sql
+as $$
+  update public.orders set delivery_photo_url = null where id = p_order_id;
+$$;
+
+-- ============================================================
+-- 공구 삭제 함수 (마감된 공구 + 관련 주문/상품/로그/배송담당자링크 전부 삭제)
 -- ============================================================
 create or replace function public.delete_campaign(p_campaign_id uuid)
 returns void
@@ -524,7 +795,8 @@ language plpgsql
 as $$
 begin
   delete from public.campaigns where id = p_campaign_id;
-  -- products, orders, order_items, order_status_logs는 각 테이블에
-  -- "on delete cascade"로 걸려있어 campaigns 삭제 시 자동으로 함께 삭제됨
+  -- products, orders, order_items, order_status_logs, campaign_complexes,
+  -- delivery_staff_links는 각 테이블에 "on delete cascade"로 걸려있어
+  -- campaigns 삭제 시 자동으로 함께 삭제됨
 end;
 $$;

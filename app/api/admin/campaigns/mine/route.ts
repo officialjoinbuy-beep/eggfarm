@@ -12,7 +12,7 @@ export async function GET() {
 
   const { data: campaigns } = await supabase
     .from("campaigns")
-    .select("id, title, is_closed, close_deadline, closed_at, created_at")
+    .select("id, title, is_closed, close_deadline, closed_at, start_at, created_at")
     .eq("owner_id", user.id);
 
   const withCounts = await Promise.all(
@@ -25,9 +25,16 @@ export async function GET() {
     })
   );
 
+  const now = Date.now();
+
+  // 진행예정: 시작일시가 아직 안 됨 (달력과 동일 기준)
+  const upcoming = withCounts
+    .filter((c) => !c.is_closed && c.start_at && new Date(c.start_at).getTime() > now)
+    .sort((a, b) => new Date(a.start_at!).getTime() - new Date(b.start_at!).getTime());
+
   // 진행중: 마감일시가 가까운 순(마감일시 없으면 맨 뒤). 마감됨: 최근 마감순.
   const active = withCounts
-    .filter((c) => !c.is_closed)
+    .filter((c) => !c.is_closed && !(c.start_at && new Date(c.start_at).getTime() > now))
     .sort((a, b) => {
       if (!a.close_deadline && !b.close_deadline) return 0;
       if (!a.close_deadline) return 1;
@@ -43,5 +50,5 @@ export async function GET() {
       return bt - at;
     });
 
-  return NextResponse.json({ active, closed });
+  return NextResponse.json({ upcoming, active, closed });
 }

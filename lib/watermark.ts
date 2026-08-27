@@ -23,7 +23,7 @@ export async function watermarkImage(file: File): Promise<Blob> {
     .replace(/\. /g, "-")
     .replace(".", "");
 
-  const fontSize = Math.max(16, Math.round(canvas.width * 0.035));
+  const fontSize = 22; // 이미지 해상도와 무관하게 항상 고정 크기로 표시(작은 사진에서 과대 확대 방지)
   ctx.font = `${fontSize}px sans-serif`;
   const padding = fontSize * 0.6;
   const textWidth = ctx.measureText(label).width;

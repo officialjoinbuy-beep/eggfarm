@@ -16,7 +16,7 @@ export async function GET(
 
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("id, title, is_closed, payment_timeout_minutes")
+    .select("id, title, is_closed, payment_timeout_minutes, delivery_mode, delivery_fee_per_order")
     .eq("id", id)
     .single();
   if (!campaign) {
@@ -32,7 +32,7 @@ export async function GET(
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, nickname, phone, address, total_amount, payment_status, delivery_status, payment_deadline, created_at, order_items(product_name_snapshot, quantity)"
+      "id, nickname, phone, address, total_amount, payment_status, delivery_status, payment_deadline, fulfillment_type, payment_method, pickup_status, created_at, order_items(product_name_snapshot, quantity)"
     )
     .eq("campaign_id", id)
     .order("created_at", { ascending: false });

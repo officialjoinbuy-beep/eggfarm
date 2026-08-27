@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, nickname, phone, pin_hash, address, total_amount, payment_status, delivery_status, delivery_photo_url, delivery_completed_at, campaign_id, created_at, order_items(product_name_snapshot, quantity, unit_price)"
+      "id, nickname, phone, pin_hash, address, total_amount, payment_status, delivery_status, delivery_photo_url, delivery_completed_at, fulfillment_type, payment_method, pickup_status, pickup_token, campaign_id, created_at, order_items(product_name_snapshot, quantity, unit_price)"
     )
     .eq("campaign_id", campaignId)
     .eq("phone", normalizedPhone);
@@ -52,6 +52,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "일치하는 주문을 찾을 수 없습니다." }, { status: 404 });
   }
 
+  // 입금대기 안내에 필요한 계좌정보 조회
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select("bank_name, account_number, account_holder")
+    .eq("id", campaignId)
+    .single();
+
   // pin_hash는 응답에서 제외하고, 배송사진은 signed URL(임시 링크)로 변환
   const safe = await Promise.all(
     matched.map(async ({ pin_hash, delivery_photo_url, ...rest }) => {
@@ -62,7 +69,13 @@ export async function POST(req: NextRequest) {
           .createSignedUrl(delivery_photo_url, 60 * 10); // 10분간 유효
         photoUrl = data?.signedUrl ?? null;
       }
-      return { ...rest, delivery_photo_url: photoUrl };
+      return {
+        ...rest,
+        delivery_photo_url: photoUrl,
+        bank_name: campaign?.bank_name ?? null,
+        account_number: campaign?.account_number ?? null,
+        account_holder: campaign?.account_holder ?? null,
+      };
     })
   );
   return NextResponse.json({ orders: safe });

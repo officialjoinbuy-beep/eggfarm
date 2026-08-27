@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizePhone } from "@/lib/format";
 
 // 진행자가 공구 상세정보(수정 화면)를 불러올 때 사용.
-// 상품 정보는 이미 /orders 라우트에서 가져오고 있으므로 여기선 공구 자체 정보 + 단지 목록만 반환.
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,7 +19,7 @@ export async function GET(
   const { data: campaign } = await supabase
     .from("campaigns")
     .select(
-      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed"
+      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed, delivery_mode, delivery_fee_per_order"
     )
     .eq("id", id)
     .single();
@@ -35,12 +34,16 @@ export async function GET(
     .eq("campaign_id", id)
     .order("display_order");
 
-  return NextResponse.json({ campaign, complexes: complexes ?? [] });
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, name, price, stock_limit, stock_reserved")
+    .eq("campaign_id", id)
+    .order("display_order");
+
+  return NextResponse.json({ campaign, complexes: complexes ?? [], products: products ?? [] });
 }
 
-// 진행중인 공구도 정보 수정 가능 (제목/계좌/마감일시/문의링크/배송가능 단지 목록).
-// 단지 목록은 기존 것을 전부 지우고 새 목록으로 교체한다. 과거 주문에는
-// 주문 당시 단지명이 텍스트로 그대로 저장되어 있어(complex_name) 영향 없음.
+// 진행중인 공구도 정보 수정 가능 (제목/계좌/마감일시/문의링크/배송방식/단지/상품).
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -55,7 +58,10 @@ export async function PATCH(
     inquiryUrl,
     startAt,
     closeDeadline,
+    deliveryMode,
+    deliveryFeePerOrder,
     complexes,
+    products,
   } = body as {
     title: string;
     bankName: string;
@@ -64,7 +70,10 @@ export async function PATCH(
     inquiryUrl?: string;
     startAt?: string | null;
     closeDeadline?: string | null;
+    deliveryMode?: "직접배송" | "위임배송";
+    deliveryFeePerOrder?: number;
     complexes: string[];
+    products?: { id: string; name: string; price: number; stockLimit: number }[];
   };
 
   const supabase = await createClient();
@@ -92,6 +101,23 @@ export async function PATCH(
     return NextResponse.json({ error: "시작일시는 마감일시보다 이전이어야 합니다." }, { status: 400 });
   }
 
+  // 상품 재고상한이 이미 예약된 수량보다 적게 줄어드는지 검증
+  if (products) {
+    for (const p of products) {
+      const { data: existing } = await supabase
+        .from("products")
+        .select("stock_reserved")
+        .eq("id", p.id)
+        .single();
+      if (existing && p.stockLimit < existing.stock_reserved) {
+        return NextResponse.json(
+          { error: `상품 재고상한은 이미 예약된 수량(${existing.stock_reserved}개)보다 적게 설정할 수 없습니다.` },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   const { error: updateError } = await supabase
     .from("campaigns")
     .update({
@@ -102,6 +128,8 @@ export async function PATCH(
       inquiry_url: inquiryUrl || null,
       start_at: startAt || null,
       close_deadline: closeDeadline || null,
+      delivery_mode: deliveryMode === "위임배송" ? "위임배송" : "직접배송",
+      delivery_fee_per_order: deliveryFeePerOrder || 0,
     })
     .eq("id", id);
 
@@ -121,6 +149,16 @@ export async function PATCH(
 
   if (complexError) {
     return NextResponse.json({ error: "단지 목록 저장에 실패했습니다." }, { status: 500 });
+  }
+
+  // 상품 정보 수정
+  if (products) {
+    for (const p of products) {
+      await supabase
+        .from("products")
+        .update({ name: p.name, price: p.price, stock_limit: p.stockLimit })
+        .eq("id", p.id);
+    }
   }
 
   return NextResponse.json({ ok: true });

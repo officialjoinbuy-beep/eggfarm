@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { formatPhone, formatWon } from "@/lib/format";
 import { watermarkImage } from "@/lib/watermark";
 import EditCampaignModal from "@/components/EditCampaignModal";
+import StaffLinkManager from "@/components/StaffLinkManager";
+import QrScanModal from "@/components/QrScanModal";
 
 type Order = {
   id: string;
@@ -15,17 +17,29 @@ type Order = {
   payment_status: "입금확인대기" | "입금확인완료" | "주문취소(미입금)";
   delivery_status: "배송준비" | "배송중" | "배송완료";
   payment_deadline: string | null;
+  fulfillment_type: "배송" | "픽업";
+  payment_method: "계좌이체" | "현장결제";
+  pickup_status: "수령대기" | "수령완료" | "노쇼" | null;
   order_items: { product_name_snapshot: string; quantity: number }[];
 };
 
 type Product = { id: string; name: string; stock_limit: number; stock_reserved: number };
-type Campaign = { id: string; title: string; is_closed: boolean };
+type Campaign = {
+  id: string;
+  title: string;
+  is_closed: boolean;
+  delivery_mode: "직접배송" | "위임배송";
+  delivery_fee_per_order: number;
+};
 
 const TABS = [
   { key: "wait", label: "입금확인대기" },
   { key: "ready", label: "배송준비" },
   { key: "shipping", label: "배송중" },
   { key: "done", label: "배송완료" },
+  { key: "pickupWait", label: "수령대기" },
+  { key: "pickupDone", label: "수령완료" },
+  { key: "noshow", label: "노쇼" },
   { key: "cancel", label: "주문취소" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
@@ -37,12 +51,19 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tab, setTab] = useState<TabKey>("wait");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
   const [revertTarget, setRevertTarget] = useState<Order | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [staffOpen, setStaffOpen] = useState(false);
+  const [qrScanOpen, setQrScanOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [photoTarget, setPhotoTarget] = useState<Order | null>(null);
+  const [pickupConfirmTarget, setPickupConfirmTarget] = useState<{
+    order: Order;
+    action: "pickup_complete" | "pickup_noshow";
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -60,16 +81,63 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     load();
   }, [campaignId]);
 
+  // 15초마다 자동 새로고침. 단, 각종 팝업이 열려있는 동안에는
+  // 데이터가 바뀌어 화면이 어색해지지 않도록 멈춘다.
+  const anyModalOpen =
+    !!revertTarget ||
+    closeConfirmOpen ||
+    deleteConfirmOpen ||
+    editOpen ||
+    staffOpen ||
+    qrScanOpen ||
+    !!photoTarget ||
+    !!pickupConfirmTarget;
+
+  useEffect(() => {
+    if (anyModalOpen) return;
+    const t = setInterval(() => {
+      load();
+    }, 15000);
+    return () => clearInterval(t);
+  }, [campaignId, anyModalOpen]);
+
+  function matchesSearch(o: Order) {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return o.nickname.toLowerCase().includes(q) || o.phone.includes(q);
+  }
+
   const byTab: Record<TabKey, Order[]> = {
-    wait: orders.filter((o) => o.payment_status === "입금확인대기"),
-    ready: orders.filter(
-      (o) => o.payment_status === "입금확인완료" && o.delivery_status === "배송준비"
-    ),
-    shipping: orders.filter(
-      (o) => o.payment_status === "입금확인완료" && o.delivery_status === "배송중"
-    ),
-    done: orders.filter((o) => o.delivery_status === "배송완료"),
-    cancel: orders.filter((o) => o.payment_status === "주문취소(미입금)"),
+    wait: orders.filter((o) => o.payment_status === "입금확인대기").filter(matchesSearch),
+    ready: orders
+      .filter(
+        (o) =>
+          o.fulfillment_type === "배송" &&
+          o.payment_status === "입금확인완료" &&
+          o.delivery_status === "배송준비"
+      )
+      .filter(matchesSearch),
+    shipping: orders
+      .filter(
+        (o) =>
+          o.fulfillment_type === "배송" &&
+          o.payment_status === "입금확인완료" &&
+          o.delivery_status === "배송중"
+      )
+      .filter(matchesSearch),
+    done: orders
+      .filter((o) => o.fulfillment_type === "배송" && o.delivery_status === "배송완료")
+      .filter(matchesSearch),
+    pickupWait: orders
+      .filter((o) => o.fulfillment_type === "픽업" && o.pickup_status === "수령대기")
+      .filter(matchesSearch),
+    pickupDone: orders
+      .filter((o) => o.fulfillment_type === "픽업" && o.pickup_status === "수령완료")
+      .filter(matchesSearch),
+    noshow: orders
+      .filter((o) => o.fulfillment_type === "픽업" && o.pickup_status === "노쇼")
+      .filter(matchesSearch),
+    cancel: orders.filter((o) => o.payment_status === "주문취소(미입금)").filter(matchesSearch),
   };
 
   async function confirmPayment(orderId: string) {
@@ -81,14 +149,29 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     load();
   }
 
+  async function bulkConfirmPayment() {
+    await fetch("/api/admin/orders/bulk-confirm-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: Array.from(selected) }),
+    });
+    setSelected(new Set());
+    load();
+  }
+
   async function doRevert() {
     if (!revertTarget) return;
     const o = revertTarget;
     let action = "";
     if (o.payment_status === "주문취소(미입금)") action = "revert_cancel";
-    else if (o.delivery_status === "배송준비") action = "revert_payment";
-    else if (o.delivery_status === "배송중") action = "revert_shipping";
-    else if (o.delivery_status === "배송완료") action = "revert_delivered";
+    else if (o.fulfillment_type === "배송" && o.delivery_status === "배송준비") action = "revert_payment";
+    else if (o.fulfillment_type === "배송" && o.delivery_status === "배송중") action = "revert_shipping";
+    else if (o.fulfillment_type === "배송" && o.delivery_status === "배송완료") action = "revert_delivered";
+
+    if (!action) {
+      setRevertTarget(null);
+      return;
+    }
 
     const res = await fetch(`/api/admin/orders/${o.id}/status`, {
       method: "PATCH",
@@ -149,6 +232,37 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     router.push("/admin");
   }
 
+  async function doPickupAction() {
+    if (!pickupConfirmTarget) return;
+    const { order, action } = pickupConfirmTarget;
+    const res = await fetch(`/api/admin/orders/${order.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "처리에 실패했습니다.");
+    }
+    setPickupConfirmTarget(null);
+    load();
+  }
+
+  async function onQrScanned(token: string) {
+    setQrScanOpen(false);
+    const res = await fetch("/api/admin/orders/scan-pickup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campaignId, token }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "조회에 실패했습니다.");
+      return;
+    }
+    setPickupConfirmTarget({ order: data.order, action: "pickup_complete" });
+  }
+
   function minutesLeft(deadline: string | null) {
     if (!deadline) return null;
     const diff = new Date(deadline).getTime() - Date.now();
@@ -161,19 +275,36 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
 
   const orderUrl = typeof window !== "undefined" ? `${window.location.origin}/order/${campaignId}` : "";
   const lookupUrl = typeof window !== "undefined" ? `${window.location.origin}/lookup/${campaignId}` : "";
+  const delegated = campaign.delivery_mode === "위임배송";
 
   return (
     <div>
       <LinkCopyBox label="구매자 주문접수 링크" url={orderUrl} />
       <LinkCopyBox label="구매자 주문조회 링크" url={lookupUrl} />
 
-      {!campaign.is_closed && (
+      <div className="flex gap-2 mb-3">
+        {!campaign.is_closed && (
+          <button
+            onClick={() => setEditOpen(true)}
+            className="flex-1 border rounded-lg py-2 text-[13px] text-neutral-600"
+          >
+            공구 정보 수정
+          </button>
+        )}
         <button
-          onClick={() => setEditOpen(true)}
-          className="w-full mb-3 border rounded-lg py-2 text-[13px] text-neutral-600"
+          onClick={() => setStaffOpen(true)}
+          className="flex-1 border rounded-lg py-2 text-[13px] text-neutral-600"
         >
-          공구 정보 수정
+          배송담당자 관리
         </button>
+      </div>
+
+      {delegated && (
+        <div className="bg-amber-50 rounded-lg p-2.5 mb-3">
+          <p className="text-[12px] text-amber-700">
+            위임배송 모드입니다 — 배송준비→배송중, 배송중→배송완료는 배송담당자 화면에서만 처리됩니다.
+          </p>
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-3 mb-3">
@@ -201,6 +332,21 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         </div>
       </div>
 
+      <div className="flex gap-2 mb-3">
+        <input
+          className="flex-1 min-w-0 border rounded-lg px-3 py-2 text-[13px]"
+          placeholder="닉네임 또는 연락처로 검색"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <button
+          onClick={() => setQrScanOpen(true)}
+          className="flex-shrink-0 border rounded-lg px-3 py-2 text-[13px]"
+        >
+          QR 스캔
+        </button>
+      </div>
+
       <div className="flex gap-1.5 overflow-x-auto mb-3 pb-0.5">
         {TABS.map((t) => (
           <button
@@ -215,7 +361,29 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         ))}
       </div>
 
-      {tab === "ready" && byTab.ready.length > 0 && (
+      {tab === "wait" && byTab.wait.length > 0 && (
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-[12px] text-neutral-500 flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={selected.size === byTab.wait.length}
+              onChange={(e) =>
+                setSelected(e.target.checked ? new Set(byTab.wait.map((o) => o.id)) : new Set())
+              }
+            />
+            전체선택
+          </label>
+          <button
+            disabled={selected.size === 0}
+            onClick={bulkConfirmPayment}
+            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40"
+          >
+            선택건 입금확인{selected.size > 0 ? ` (${selected.size})` : ""}
+          </button>
+        </div>
+      )}
+
+      {tab === "ready" && !delegated && byTab.ready.length > 0 && (
         <div className="flex items-center justify-between mb-2">
           <label className="text-[12px] text-neutral-500 flex items-center gap-1.5">
             <input
@@ -248,7 +416,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
               idx < byTab[tab].length - 1 ? "border-b" : ""
             }`}
           >
-            {tab === "ready" && (
+            {(tab === "wait" || (tab === "ready" && !delegated)) && (
               <input
                 type="checkbox"
                 checked={selected.has(o.id)}
@@ -256,7 +424,13 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
               />
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-medium truncate">{o.nickname}</p>
+              <p className="text-[14px] font-medium truncate">
+                {o.nickname}{" "}
+                <span className="text-[11px] text-neutral-400 font-normal">
+                  {o.fulfillment_type === "픽업" ? "· 현장픽업" : "· 문앞배송"}
+                  {o.fulfillment_type === "픽업" && o.payment_method === "현장결제" && " · 현장결제"}
+                </span>
+              </p>
               <p className="text-[12px] text-neutral-500 break-words">
                 {o.order_items.map((i) => `${i.product_name_snapshot} · ${i.quantity}개`).join(", ")}
               </p>
@@ -273,26 +447,42 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             {tab === "wait" && (
               <button
                 onClick={() => confirmPayment(o.id)}
-                className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded"
+                className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded flex-shrink-0"
               >
                 입금확인
               </button>
             )}
-            {tab !== "wait" && (
+            {tab !== "wait" && tab !== "pickupWait" && tab !== "pickupDone" && tab !== "noshow" && (
               <button
                 onClick={() => setRevertTarget(o)}
-                className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded"
+                className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded flex-shrink-0"
               >
                 ↩ 되돌리기
               </button>
             )}
-            {tab === "shipping" && (
+            {tab === "shipping" && !delegated && (
               <button
                 onClick={() => setPhotoTarget(o)}
-                className="text-[12px] px-2.5 py-1.5 border rounded"
+                className="text-[12px] px-2.5 py-1.5 border rounded flex-shrink-0"
               >
                 배송완료 처리
               </button>
+            )}
+            {tab === "pickupWait" && (
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => setPickupConfirmTarget({ order: o, action: "pickup_noshow" })}
+                  className="text-[11px] px-2 py-1.5 border border-red-200 text-red-500 rounded"
+                >
+                  노쇼
+                </button>
+                <button
+                  onClick={() => setPickupConfirmTarget({ order: o, action: "pickup_complete" })}
+                  className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded"
+                >
+                  수령완료
+                </button>
+              </div>
             )}
           </div>
         ))}
@@ -372,6 +562,14 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         />
       )}
 
+      {staffOpen && (
+        <StaffLinkManager campaignId={campaignId} onClose={() => setStaffOpen(false)} />
+      )}
+
+      {qrScanOpen && (
+        <QrScanModal onCancel={() => setQrScanOpen(false)} onScanned={onQrScanned} />
+      )}
+
       {photoTarget && (
         <PhotoUploadModal
           order={photoTarget}
@@ -381,6 +579,43 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             load();
           }}
         />
+      )}
+
+      {pickupConfirmTarget && (
+        <Overlay>
+          <p className="text-[15px] font-medium mb-2">
+            {pickupConfirmTarget.action === "pickup_complete" ? "수령완료 처리할까요?" : "노쇼로 처리할까요?"}
+          </p>
+          <p className="text-[13px] text-neutral-500 mb-1">
+            {pickupConfirmTarget.order.nickname}님 / {formatPhone(pickupConfirmTarget.order.phone)}
+          </p>
+          <p className="text-[13px] text-neutral-500 mb-4">
+            {pickupConfirmTarget.order.order_items
+              .map((i) => `${i.product_name_snapshot} ${i.quantity}개`)
+              .join(", ")}
+          </p>
+          {pickupConfirmTarget.action === "pickup_noshow" && (
+            <p className="text-[12px] text-red-500 mb-3">
+              같은 연락처로 2회 노쇼 시 이후 현장픽업 주문이 제한됩니다.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPickupConfirmTarget(null)}
+              className="flex-1 border rounded-lg py-2 text-sm"
+            >
+              취소
+            </button>
+            <button
+              onClick={doPickupAction}
+              className={`flex-1 rounded-lg py-2 text-sm text-white ${
+                pickupConfirmTarget.action === "pickup_noshow" ? "bg-red-600" : "bg-neutral-900"
+              }`}
+            >
+              확인
+            </button>
+          </div>
+        </Overlay>
       )}
     </div>
   );
@@ -489,6 +724,11 @@ function PhotoUploadModal({
 
   async function submit() {
     if (!file) return;
+    const proceed = window.confirm(
+      `${order.nickname}님(${formatPhone(order.phone)}) / ${order.address}\n배송완료 처리할까요?`
+    );
+    if (!proceed) return;
+
     setUploading(true);
     const watermarked = await watermarkImage(file);
     const formData = new FormData();
@@ -554,10 +794,12 @@ function PhotoUploadModal({
   );
 }
 
-function Overlay({ children }: { children: React.ReactNode }) {
+export function Overlay({ children }: { children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-5 z-50">
-      <div className="bg-white rounded-2xl border p-5 w-full max-w-sm shadow-xl">{children}</div>
+      <div className="bg-white rounded-2xl border p-5 w-full max-w-sm shadow-xl max-h-[85vh] overflow-y-auto">
+        {children}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ type Campaign = {
   is_closed: boolean;
   close_deadline: string | null;
   closed_at: string | null;
+  start_at?: string | null;
   order_count: number;
 };
 
@@ -27,6 +28,7 @@ function formatDeadline(iso: string | null) {
 
 export default function CampaignListClient() {
   const router = useRouter();
+  const [upcoming, setUpcoming] = useState<Campaign[]>([]);
   const [active, setActive] = useState<Campaign[]>([]);
   const [closed, setClosed] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,7 @@ export default function CampaignListClient() {
     const res = await fetch("/api/admin/campaigns/mine");
     if (res.ok) {
       const data = await res.json();
+      setUpcoming(data.upcoming ?? []);
       setActive(data.active ?? []);
       setClosed(data.closed ?? []);
     }
@@ -98,6 +101,31 @@ export default function CampaignListClient() {
         <p className="text-center text-neutral-400 text-[13px] py-10">불러오는 중...</p>
       ) : (
         <>
+          {upcoming.length > 0 && (
+            <>
+              <p className="text-[12px] text-neutral-500 mb-2">
+                진행예정 <span className="text-neutral-400">{upcoming.length}</span>
+              </p>
+              <div className="flex flex-col gap-2 mb-5">
+                {upcoming.map((c) => (
+                  <div
+                    key={c.id}
+                    className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between"
+                  >
+                    <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
+                      <p className="text-[13px] font-medium truncate">{c.title}</p>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        주문 {c.order_count}건
+                        {c.start_at && ` · ${formatDeadline(c.start_at)} 시작 예정`}
+                      </p>
+                    </button>
+                    <span className="text-[12px] text-neutral-400 flex-shrink-0 ml-2">보기 →</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           <p className="text-[12px] text-neutral-500 mb-2">
             진행중 <span className="text-neutral-400">{active.length}</span>
           </p>

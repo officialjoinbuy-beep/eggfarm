@@ -41,6 +41,20 @@ export function formatAccountNumber(input: string): string {
   return groups.join("-");
 }
 
+// 배송동선 정렬: 동(1순위, 자연스러운 순서) → 호수 내림차순(2순위, 높은 층부터)
+// dong/unit_no가 없는 주문(현장픽업 등)은 맨 뒤로 보낸다.
+export function sortByDongUnitDesc<T extends { dong?: string | null; unit_no?: string | null }>(
+  list: T[]
+): T[] {
+  return [...list].sort((a, b) => {
+    if (!a.dong && !b.dong) return 0;
+    if (!a.dong) return 1;
+    if (!b.dong) return -1;
+    const dongCompare = a.dong.localeCompare(b.dong, "ko", { numeric: true });
+    if (dongCompare !== 0) return dongCompare;
+    return (b.unit_no || "").localeCompare(a.unit_no || "", "ko", { numeric: true });
+  });
+}
 // 현재 시각 기준 다음 정시를 { date: "YYYY-MM-DD", time: "HH:00" } 형태로 반환.
 // 공구 시작일시 입력칸의 기본값으로 사용 (예: 12:55에 폼을 열면 13:00으로 세팅).
 export function nextHour(): { date: string; time: string } {

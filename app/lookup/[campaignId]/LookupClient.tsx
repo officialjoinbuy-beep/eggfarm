@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { formatWon, formatPhone } from "@/lib/format";
 import BuyerNav from "@/components/BuyerNav";
 
@@ -12,10 +13,91 @@ type OrderResult = {
   payment_status: string;
   delivery_status: string;
   delivery_photo_url: string | null;
+  created_at: string;
+  bank_name: string | null;
+  account_number: string | null;
+  account_holder: string | null;
+  fulfillment_type: "배송" | "픽업";
+  payment_method: "계좌이체" | "현장결제";
+  pickup_status: "수령대기" | "수령완료" | "노쇼" | null;
+  pickup_token: string | null;
   order_items: { product_name_snapshot: string; quantity: number }[];
 };
 
+const NUDGE_MINUTES = 30; // 고객에게 보여주는 안내용 마감(실제 자동취소 기준과 다름, 서둘러 입금하도록 유도)
+
+function PaymentPendingBanner({ order }: { order: OrderResult }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const [copied, setCopied] = useState(false);
+
+  async function copyAccount() {
+    if (!order.account_number) return;
+    await navigator.clipboard.writeText(order.account_number);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const nudgeDeadline = new Date(order.created_at).getTime() + NUDGE_MINUTES * 60000;
+  const remainingMs = nudgeDeadline - now;
+  const withinNudge = remainingMs > 0;
+  const remainingMin = Math.floor(remainingMs / 60000);
+  const remainingSec = Math.floor((remainingMs % 60000) / 1000);
+
+  return (
+    <div className="bg-red-50 rounded-lg p-3 mb-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[13px] text-red-600 font-medium">입금이 확인되지 않았습니다</p>
+        {withinNudge && (
+          <span className="text-[12px] text-red-600 font-medium">
+            {remainingMin}분 {remainingSec}초 남음
+          </span>
+        )}
+      </div>
+      {!withinNudge && (
+        <p className="text-[12px] text-red-600 mb-2">입금이 지연되고 있어요. 서둘러 입금해주세요.</p>
+      )}
+      {order.account_number && (
+        <button
+          onClick={copyAccount}
+          className="w-full flex items-center justify-between px-3 py-2.5 bg-white rounded mb-1.5"
+        >
+          <span className="text-[13px] font-medium">
+            {order.bank_name} {order.account_number}
+          </span>
+          <span className="text-[12px] text-neutral-400">{copied ? "복사됨" : "복사"}</span>
+        </button>
+      )}
+      {order.account_holder && (
+        <p className="text-[12px] text-neutral-500">예금주 {order.account_holder}</p>
+      )}
+    </div>
+  );
+}
+
 const STEPS = ["입금확인", "배송준비", "배송중", "배송완료"] as const;
+const PICKUP_STEPS = ["입금확인", "수령대기", "수령완료"] as const;
+
+function PickupQrCard({ order }: { order: OrderResult }) {
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!order.pickup_token) return;
+    QRCode.toDataURL(order.pickup_token, { width: 220, margin: 1 }).then(setQrDataUrl);
+  }, [order.pickup_token]);
+
+  return (
+    <div className="bg-white border rounded-lg p-4 mb-3 flex flex-col items-center">
+      <p className="text-[12px] text-neutral-500 mb-2">현장 수령 시 이 QR을 보여주세요</p>
+      {qrDataUrl && <img src={qrDataUrl} alt="픽업 QR코드" className="w-40 h-40" />}
+    </div>
+  );
+}
 
 // 주문의 현재 상태(입금+배송)를 스텝 인덱스(0~3)로 변환.
 // 0=입금확인 전, 1=배송준비(입금확인 완료), 2=배송중, 3=배송완료
@@ -31,6 +113,53 @@ function StatusStepper({ order }: { order: OrderResult }) {
     return (
       <div className="bg-red-50 rounded-lg p-3 text-center">
         <p className="text-[13px] text-red-600 font-medium">주문취소(미입금)</p>
+      </div>
+    );
+  }
+
+  if (order.fulfillment_type === "픽업") {
+    let current = 0;
+    if (order.pickup_status === "노쇼") {
+      return (
+        <div className="bg-red-50 rounded-lg p-3 text-center">
+          <p className="text-[13px] text-red-600 font-medium">노쇼 처리됨</p>
+        </div>
+      );
+    }
+    if (order.pickup_status === "수령완료") current = 2;
+    else if (order.pickup_status === "수령대기") current = 1;
+
+    return (
+      <div className="flex flex-col">
+        {PICKUP_STEPS.map((label, idx) => {
+          const done = idx <= current;
+          const isLast = idx === PICKUP_STEPS.length - 1;
+          return (
+            <div key={label} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                    done ? "bg-neutral-900" : "bg-neutral-200"
+                  }`}
+                />
+                {!isLast && (
+                  <div
+                    className={`w-px flex-1 min-h-[22px] ${
+                      idx < current ? "bg-neutral-900" : "bg-neutral-200"
+                    }`}
+                  />
+                )}
+              </div>
+              <p
+                className={`text-[13px] pb-5 ${
+                  done ? "text-neutral-900 font-medium" : "text-neutral-400"
+                } ${idx === current ? "font-semibold" : ""}`}
+              >
+                {label}
+              </p>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -118,6 +247,10 @@ export default function LookupClient({
           >
             <p className="text-[15px] font-medium mb-3">{o.nickname}님 주문내역</p>
 
+            {o.payment_status === "입금확인대기" && o.payment_method === "계좌이체" && (
+              <PaymentPendingBanner order={o} />
+            )}
+
             <div className="border-y py-3 mb-3">
               {o.order_items.map((item, i) => (
                 <div key={i} className="flex justify-between text-[13px] mb-1.5">
@@ -132,9 +265,17 @@ export default function LookupClient({
               </div>
             </div>
 
+            {o.fulfillment_type === "픽업" && o.pickup_status === "수령대기" && (
+              <PickupQrCard order={o} />
+            )}
+
             <div className="mb-3">
-              <p className="text-[12px] text-neutral-500 mb-1">배송 주소</p>
-              <p className="text-[13px] mb-3">{o.address}</p>
+              {o.fulfillment_type === "배송" && (
+                <>
+                  <p className="text-[12px] text-neutral-500 mb-1">배송 주소</p>
+                  <p className="text-[13px] mb-3">{o.address}</p>
+                </>
+              )}
               <StatusStepper order={o} />
             </div>
 
