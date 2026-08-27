@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   const { data: campaign, error: campaignErr } = await supabase
     .from("campaigns")
-    .select("payment_timeout_minutes, is_closed")
+    .select("payment_timeout_minutes, is_closed, start_at")
     .eq("id", campaignId)
     .single();
 
@@ -63,6 +63,12 @@ export async function POST(req: NextRequest) {
   if (campaign.is_closed) {
     return NextResponse.json(
       { error: "죄송합니다, 방금 마감되었습니다." },
+      { status: 409 }
+    );
+  }
+  if (campaign.start_at && new Date(campaign.start_at).getTime() > Date.now()) {
+    return NextResponse.json(
+      { error: "아직 주문접수가 시작되지 않았습니다." },
       { status: 409 }
     );
   }

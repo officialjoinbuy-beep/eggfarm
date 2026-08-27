@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
     accountNumber,
     accountHolder,
     inquiryUrl,
+    startAt,
     closeDeadline,
     complexes,
     products,
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
     accountNumber: string;
     accountHolder: string;
     inquiryUrl?: string;
+    startAt?: string; // ISO datetime string, optional
     closeDeadline?: string; // ISO datetime string, optional
     complexes: string[];
     products: { name: string; price: number; stockLimit: number; imageUrl?: string }[];
@@ -49,6 +51,9 @@ export async function POST(req: NextRequest) {
   if (closeDeadline && new Date(closeDeadline).getTime() <= Date.now()) {
     return NextResponse.json({ error: "마감일시는 현재보다 미래여야 합니다." }, { status: 400 });
   }
+  if (startAt && closeDeadline && new Date(startAt).getTime() >= new Date(closeDeadline).getTime()) {
+    return NextResponse.json({ error: "시작일시는 마감일시보다 이전이어야 합니다." }, { status: 400 });
+  }
 
   const { data: campaign, error } = await supabase
     .from("campaigns")
@@ -59,6 +64,7 @@ export async function POST(req: NextRequest) {
       account_number: normalizePhone(accountNumber), // 하이픈 제거
       account_holder: accountHolder,
       inquiry_url: inquiryUrl || null,
+      start_at: startAt || null,
       close_deadline: closeDeadline || null,
     })
     .select("id")

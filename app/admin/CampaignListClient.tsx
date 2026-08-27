@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CampaignForm from "@/components/CampaignForm";
+import AdminCalendar from "./AdminCalendar";
 
 type Campaign = {
   id: string;
@@ -69,7 +70,26 @@ export default function CampaignListClient() {
 
   return (
     <div>
-      <p className="text-[16px] font-semibold mb-1">내 공구 목록</p>
+      <p className="text-[16px] font-semibold mb-3">내 공구 목록</p>
+
+      {showForm ? (
+        <div className="mb-5">
+          <CampaignForm
+            onCreated={(id) => goTo(id)}
+            onCancel={() => setShowForm(false)}
+          />
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full mb-5 border border-dashed rounded-lg py-2.5 text-[13px] text-neutral-500"
+        >
+          + 새 공구 만들기
+        </button>
+      )}
+
+      <AdminCalendar />
+
       <p className="text-[12px] text-neutral-500 mb-4">
         진행중 공구는 마감일시가 가까운 순, 마감된 공구는 최근 마감순으로 표시됩니다
       </p>
@@ -135,20 +155,6 @@ export default function CampaignListClient() {
             </>
           )}
         </>
-      )}
-
-      {showForm ? (
-        <CampaignForm
-          onCreated={(id) => goTo(id)}
-          onCancel={() => setShowForm(false)}
-        />
-      ) : (
-        <button
-          onClick={() => setShowForm(true)}
-          className="w-full border border-dashed rounded-lg py-2.5 text-[13px] text-neutral-500"
-        >
-          + 새 공구 만들기
-        </button>
       )}
 
       {deleteTarget && (

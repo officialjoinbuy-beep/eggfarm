@@ -19,7 +19,7 @@ export default async function AdminCampaignPage({
   }
 
   return (
-    <main className="max-w-md mx-auto p-5">
+    <main className="max-w-md mx-auto p-5 overflow-x-hidden">
       <Link href="/admin" className="text-[13px] text-neutral-500 mb-3 inline-block">
         ← 내 공구 목록
       </Link>

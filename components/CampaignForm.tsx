@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatAccountNumber, formatNumberWithCommas } from "@/lib/format";
+import { formatAccountNumber, formatNumberWithCommas, nextHour } from "@/lib/format";
 
 type ProductInput = {
   name: string;
@@ -33,6 +33,8 @@ export default function CampaignForm({
   const [accountNumberDisplay, setAccountNumberDisplay] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
   const [inquiryUrl, setInquiryUrl] = useState("");
+  const [startDate, setStartDate] = useState(() => nextHour().date);
+  const [startTime, setStartTime] = useState(() => nextHour().time);
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +100,15 @@ export default function CampaignForm({
       return;
     }
 
+    let startAt: string | undefined;
+    if (startDate && startTime) {
+      startAt = new Date(`${startDate}T${startTime}:00`).toISOString();
+    }
+    if (startAt && closeDeadline && new Date(startAt) >= new Date(closeDeadline)) {
+      setError("시작일시는 마감일시보다 이전이어야 합니다.");
+      return;
+    }
+
     setSubmitting(true);
     const res = await fetch("/api/admin/campaigns", {
       method: "POST",
@@ -108,6 +119,7 @@ export default function CampaignForm({
         accountNumber: accountNumberDisplay, // 서버에서 숫자만 추출해서 저장
         accountHolder,
         inquiryUrl,
+        startAt,
         closeDeadline,
         complexes: validComplexes,
         products: products.map((p) => ({
@@ -137,6 +149,24 @@ export default function CampaignForm({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
       />
+
+      <p className="text-[12px] text-neutral-500 mb-1.5">
+        시작일시 (기본값: 다음 정시 — 이 시각 전엔 주문접수 차단)
+      </p>
+      <div className="flex gap-2 mb-3">
+        <input
+          type="date"
+          className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+        />
+        <input
+          type="time"
+          className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+        />
+      </div>
 
       <p className="text-[12px] text-neutral-500 mb-1.5">마감일시 (선택 — 지나면 자동 마감)</p>
       <div className="flex gap-2 mb-3">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatPhone, formatWon } from "@/lib/format";
 import { watermarkImage } from "@/lib/watermark";
+import EditCampaignModal from "@/components/EditCampaignModal";
 
 type Order = {
   id: string;
@@ -39,6 +40,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [revertTarget, setRevertTarget] = useState<Order | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [photoTarget, setPhotoTarget] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,18 +159,45 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   if (loading) return <p className="text-center text-neutral-400 py-20 text-sm">불러오는 중...</p>;
   if (!campaign) return <p className="text-center text-neutral-400 py-20 text-sm">공구를 찾을 수 없습니다.</p>;
 
+  const orderUrl = typeof window !== "undefined" ? `${window.location.origin}/order/${campaignId}` : "";
+  const lookupUrl = typeof window !== "undefined" ? `${window.location.origin}/lookup/${campaignId}` : "";
+
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <LinkCopyBox label="구매자 주문접수 링크" url={orderUrl} />
+      <LinkCopyBox label="구매자 주문조회 링크" url={lookupUrl} />
+
+      {!campaign.is_closed && (
+        <button
+          onClick={() => setEditOpen(true)}
+          className="w-full mb-3 border rounded-lg py-2 text-[13px] text-neutral-600"
+        >
+          공구 정보 수정
+        </button>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-neutral-50 border rounded-xl p-4">
           <p className="text-[13px] text-neutral-500 mb-1">총 주문</p>
           <p className="text-[24px] font-medium">{orders.length}건</p>
         </div>
         <div className="bg-neutral-50 border rounded-xl p-4">
-          <p className="text-[13px] text-neutral-500 mb-1">{products[0]?.name ?? "상품"} 재고</p>
-          <p className="text-[24px] font-medium">
-            {products[0] ? products[0].stock_reserved : 0}/{products[0]?.stock_limit ?? 0}
-          </p>
+          <p className="text-[13px] text-neutral-500 mb-1">상품 종류</p>
+          <p className="text-[24px] font-medium">{products.length}개</p>
+        </div>
+      </div>
+
+      <div className="bg-neutral-50 border rounded-xl p-4 mb-4">
+        <p className="text-[13px] text-neutral-500 mb-2">상품별 재고</p>
+        <div className="flex flex-col gap-1.5">
+          {products.map((p) => (
+            <div key={p.id} className="flex items-center justify-between">
+              <span className="text-[13px]">{p.name}</span>
+              <span className="text-[14px] font-medium">
+                {p.stock_reserved}/{p.stock_limit}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -226,9 +255,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
                 onChange={() => toggleSelect(o.id)}
               />
             )}
-            <div className="flex-1">
-              <p className="text-[14px] font-medium">{o.nickname}</p>
-              <p className="text-[12px] text-neutral-500">
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] font-medium truncate">{o.nickname}</p>
+              <p className="text-[12px] text-neutral-500 break-words">
                 {o.order_items.map((i) => `${i.product_name_snapshot} · ${i.quantity}개`).join(", ")}
               </p>
               {tab === "wait" && (
@@ -330,6 +359,17 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             </button>
           </div>
         </Overlay>
+      )}
+
+      {editOpen && (
+        <EditCampaignModal
+          campaignId={campaignId}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false);
+            load();
+          }}
+        />
       )}
 
       {photoTarget && (
@@ -518,6 +558,31 @@ function Overlay({ children }: { children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-5 z-50">
       <div className="bg-white rounded-2xl border p-5 w-full max-w-sm shadow-xl">{children}</div>
+    </div>
+  );
+}
+
+function LinkCopyBox({ label, url }: { label: string; url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="bg-neutral-50 border rounded-lg p-2.5 mb-2">
+      <p className="text-[11px] text-neutral-500 mb-1">{label}</p>
+      <div className="flex items-center gap-2">
+        <p className="flex-1 min-w-0 text-[12px] truncate">{url}</p>
+        <button
+          onClick={copy}
+          className="flex-shrink-0 text-[11px] px-2 py-1 border rounded bg-white"
+        >
+          {copied ? "복사됨" : "복사"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ create table public.campaigns (
   is_closed boolean not null default false,
   closed_at timestamptz,
   close_deadline timestamptz, -- 마감 예정일시(선택) - 지나면 자동 마감
+  start_at timestamptz, -- 시작 예정일시(선택) - 예약생성용, 이 시각 전에는 주문접수 차단
   created_at timestamptz not null default now()
 );
 

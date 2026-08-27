@@ -40,3 +40,15 @@ export function formatAccountNumber(input: string): string {
   }
   return groups.join("-");
 }
+
+// 현재 시각 기준 다음 정시를 { date: "YYYY-MM-DD", time: "HH:00" } 형태로 반환.
+// 공구 시작일시 입력칸의 기본값으로 사용 (예: 12:55에 폼을 열면 13:00으로 세팅).
+export function nextHour(): { date: string; time: string } {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  now.setHours(now.getHours() + 1);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}:00`;
+  return { date, time };
+}
