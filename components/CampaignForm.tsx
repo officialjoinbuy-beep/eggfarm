@@ -28,6 +28,7 @@ export default function CampaignForm({
 }) {
   const [title, setTitle] = useState("");
   const [products, setProducts] = useState<ProductInput[]>([{ ...emptyProduct }]);
+  const [complexes, setComplexes] = useState<string[]>([""]);
   const [bankName, setBankName] = useState("");
   const [accountNumberDisplay, setAccountNumberDisplay] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
@@ -46,6 +47,18 @@ export default function CampaignForm({
   function addProduct() {
     if (products.length >= 3) return;
     setProducts((prev) => [...prev, { ...emptyProduct }]);
+  }
+
+  function updateComplex(idx: number, value: string) {
+    setComplexes((prev) => prev.map((c, i) => (i === idx ? value : c)));
+  }
+
+  function addComplex() {
+    setComplexes((prev) => [...prev, ""]);
+  }
+
+  function removeComplex(idx: number) {
+    setComplexes((prev) => prev.filter((_, i) => i !== idx));
   }
 
   async function handleImageSelect(idx: number, file: File | null) {
@@ -72,6 +85,11 @@ export default function CampaignForm({
       setError("필수 항목을 입력해주세요.");
       return;
     }
+    const validComplexes = complexes.map((c) => c.trim()).filter(Boolean);
+    if (validComplexes.length === 0) {
+      setError("배송 가능한 아파트 단지를 1개 이상 등록해주세요.");
+      return;
+    }
     let closeDeadline: string | undefined;
     if (closeDate && closeTime) {
       closeDeadline = new Date(`${closeDate}T${closeTime}:00`).toISOString();
@@ -91,6 +109,7 @@ export default function CampaignForm({
         accountHolder,
         inquiryUrl,
         closeDeadline,
+        complexes: validComplexes,
         products: products.map((p) => ({
           name: p.name,
           price: Number(p.price.replace(/[^0-9]/g, "")),
@@ -133,6 +152,36 @@ export default function CampaignForm({
           value={closeTime}
           onChange={(e) => setCloseTime(e.target.value)}
         />
+      </div>
+
+      <p className="text-[12px] text-neutral-500 mb-1.5">
+        배송 가능한 아파트 단지 (등록된 단지만 주문 가능)
+      </p>
+      <div className="flex flex-col gap-2 mb-3">
+        {complexes.map((c, idx) => (
+          <div key={idx} className="flex gap-2">
+            <input
+              className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+              placeholder="아파트 단지명"
+              value={c}
+              onChange={(e) => updateComplex(idx, e.target.value)}
+            />
+            {complexes.length > 1 && (
+              <button
+                onClick={() => removeComplex(idx)}
+                className="flex-shrink-0 w-8 border rounded text-neutral-400"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={addComplex}
+          className="border border-dashed rounded-lg py-2 text-center text-neutral-500 text-[13px]"
+        >
+          + 단지 추가
+        </button>
       </div>
 
       <p className="text-[12px] text-neutral-500 mb-1.5">상품 (최대 3개)</p>

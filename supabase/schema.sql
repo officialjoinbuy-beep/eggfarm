@@ -69,6 +69,33 @@ create policy "owner_update_products" on public.products
   );
 
 -- ------------------------------------------------------------
+-- 2-1. 배송 가능 아파트 단지(campaign_complexes) 테이블
+-- ------------------------------------------------------------
+-- 진행자가 실제 배송 가능한 범위만 등록. 등록된 단지가 하나도 없으면
+-- 해당 공구는 주문접수 자체를 받지 않는다(배송 불가 지역 주문 방지).
+create table public.campaign_complexes (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references public.campaigns(id) on delete cascade,
+  name text not null,
+  display_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.campaign_complexes enable row level security;
+
+-- 구매자 화면에서 목록을 보여줘야 하므로 공개 조회 허용
+create policy "public_select_complexes" on public.campaign_complexes
+  for select using (true);
+create policy "owner_insert_complexes" on public.campaign_complexes
+  for insert with check (
+    exists (select 1 from public.campaigns c where c.id = campaign_id and c.owner_id = auth.uid())
+  );
+create policy "owner_delete_complexes" on public.campaign_complexes
+  for delete using (
+    exists (select 1 from public.campaigns c where c.id = campaign_id and c.owner_id = auth.uid())
+  );
+
+-- ------------------------------------------------------------
 -- 3. 주문(orders) 테이블
 -- ------------------------------------------------------------
 create type payment_status as enum ('입금확인대기', '입금확인완료', '주문취소(미입금)');
@@ -80,7 +107,11 @@ create table public.orders (
   nickname text not null,
   phone text not null, -- 하이픈 없이 숫자만 저장
   pin_hash text not null, -- PIN 4자리는 해시로 저장(평문 저장 금지)
-  address text not null,
+  address text not null, -- 단지명+동+호수를 조합한 표시용 전체 주소
+  complex_name text, -- 단지명 (엑셀 분리 출력용)
+  dong text, -- 동
+  unit_no text, -- 호수 (4자리 0채움, 예: 0302, 1003)
+  entry_password text, -- 공동현관 출입 비밀번호(선택)
   total_amount int not null,
   payment_status payment_status not null default '입금확인대기',
   delivery_status delivery_status not null default '배송준비',
@@ -111,7 +142,7 @@ create policy "owner_update_orders" on public.orders
 create table public.order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,
-  product_id uuid not null references public.products(id),
+  product_id uuid not null references public.products(id) on delete cascade,
   product_name_snapshot text not null, -- 마감 후에도 집계표에 상품명 남기기 위한 스냅샷
   quantity int not null check (quantity > 0),
   unit_price int not null

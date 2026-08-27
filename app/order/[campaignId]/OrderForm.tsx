@@ -13,14 +13,18 @@ type Product = {
   image_url?: string | null;
 };
 
+type Complex = { id: string; name: string };
+
 export default function OrderForm({
   campaignId,
   title,
   products,
+  complexes,
 }: {
   campaignId: string;
   title: string;
   products: Product[];
+  complexes: Complex[];
 }) {
   const router = useRouter();
   const [quantities, setQuantities] = useState<Record<string, number>>(
@@ -29,7 +33,10 @@ export default function OrderForm({
   const [nickname, setNickname] = useState("");
   const [phoneDisplay, setPhoneDisplay] = useState("");
   const [pin, setPin] = useState("");
-  const [address, setAddress] = useState("");
+  const [complexId, setComplexId] = useState(complexes[0]?.id ?? "");
+  const [dong, setDong] = useState("");
+  const [unitNo, setUnitNo] = useState("");
+  const [entryPassword, setEntryPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -62,8 +69,16 @@ export default function OrderForm({
       setError("상품을 1개 이상 선택해주세요.");
       return;
     }
-    if (!nickname || !normalizePhone(phoneDisplay) || !address) {
-      setError("닉네임, 연락처, 주소를 모두 입력해주세요.");
+    if (!nickname || !normalizePhone(phoneDisplay)) {
+      setError("닉네임, 연락처를 모두 입력해주세요.");
+      return;
+    }
+    if (!complexId) {
+      setError("아파트 단지를 선택해주세요.");
+      return;
+    }
+    if (!dong.trim() || !unitNo.trim()) {
+      setError("동, 호수를 입력해주세요.");
       return;
     }
     if (!/^[0-9]{4}$/.test(pin)) {
@@ -85,7 +100,10 @@ export default function OrderForm({
           nickname,
           phone: phoneDisplay,
           pin,
-          address,
+          complexId,
+          dong: dong.trim(),
+          unitNo: unitNo.trim(),
+          entryPassword: entryPassword.trim(),
           agreed,
           items: products
             .filter((p) => (quantities[p.id] || 0) > 0)
@@ -191,11 +209,39 @@ export default function OrderForm({
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))}
         />
-        <textarea
+        <select
+          className="w-full border rounded px-3 py-2 text-sm bg-white"
+          value={complexId}
+          onChange={(e) => setComplexId(e.target.value)}
+        >
+          {complexes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex gap-2 items-center">
+          <input
+            className="w-20 border rounded px-3 py-2 text-sm text-center"
+            placeholder=""
+            value={dong}
+            onChange={(e) => setDong(e.target.value)}
+          />
+          <span className="text-sm">동</span>
+          <input
+            className="w-20 border rounded px-3 py-2 text-sm text-center"
+            placeholder=""
+            inputMode="numeric"
+            value={unitNo}
+            onChange={(e) => setUnitNo(e.target.value.replace(/[^0-9]/g, ""))}
+          />
+          <span className="text-sm">호</span>
+        </div>
+        <input
           className="w-full border rounded px-3 py-2 text-sm"
-          placeholder="배송 주소"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
+          placeholder="공동출입 비밀번호 (선택, 예: #1003#0953)"
+          value={entryPassword}
+          onChange={(e) => setEntryPassword(e.target.value)}
         />
       </div>
 
@@ -228,7 +274,7 @@ export default function OrderForm({
         {submitting ? "처리 중..." : "주문하기"}
       </button>
 
-      <p className="text-[11px] text-neutral-400 mt-2 text-center">
+      <p className="text-[11px] text-red-500 mt-2 text-center font-medium">
         PIN은 나중에 주문조회 시 필요하니 꼭 기억해주세요
       </p>
     </div>

@@ -19,7 +19,7 @@ export async function GET(
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "nickname, phone, address, total_amount, payment_status, delivery_status, created_at, order_items(product_name_snapshot, quantity, unit_price)"
+      "nickname, phone, address, complex_name, dong, unit_no, entry_password, total_amount, payment_status, delivery_status, created_at, order_items(product_name_snapshot, quantity, unit_price)"
     )
     .eq("campaign_id", id)
     .neq("payment_status", "주문취소(미입금)");
@@ -46,7 +46,11 @@ export async function GET(
   const detailRows = orders.map((o) => ({
     닉네임: o.nickname,
     연락처: formatPhone(o.phone),
-    주소: o.address,
+    단지명: o.complex_name || "",
+    동: o.dong || "",
+    호수: o.unit_no || "",
+    출입비밀번호: o.entry_password || "",
+    전체주소: o.address,
     주문상품: (o.order_items as any[])
       .map((i) => `${i.product_name_snapshot} x${i.quantity}`)
       .join(", "),
