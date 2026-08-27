@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatPhone, formatWon } from "@/lib/format";
 import { watermarkImage } from "@/lib/watermark";
 
@@ -29,6 +30,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function Dashboard({ campaignId }: { campaignId: string }) {
+  const router = useRouter();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -36,6 +38,8 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [revertTarget, setRevertTarget] = useState<Order | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [photoTarget, setPhotoTarget] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -127,6 +131,20 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     await fetch(`/api/admin/campaigns/${campaignId}/close`, { method: "POST" });
     setCloseConfirmOpen(false);
     load();
+  }
+
+  async function deleteCampaign() {
+    setDeleting(true);
+    const res = await fetch(`/api/admin/campaigns/${campaignId}/delete`, {
+      method: "POST",
+    });
+    setDeleting(false);
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "삭제에 실패했습니다.");
+      return;
+    }
+    router.push("/admin");
   }
 
   function minutesLeft(deadline: string | null) {
@@ -264,6 +282,14 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       >
         집계표 다운로드
       </a>
+      {campaign.is_closed && (
+        <button
+          onClick={() => setDeleteConfirmOpen(true)}
+          className="w-full mt-2 border border-red-200 text-red-500 rounded-lg py-2.5 text-sm"
+        >
+          공구 삭제
+        </button>
+      )}
 
       {revertTarget && (
         <RevertModal
@@ -280,6 +306,30 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           onCancel={() => setCloseConfirmOpen(false)}
           onConfirm={closeCampaign}
         />
+      )}
+
+      {deleteConfirmOpen && (
+        <Overlay>
+          <p className="text-[15px] font-medium mb-2">공구를 삭제할까요?</p>
+          <p className="text-[13px] text-neutral-500 mb-4">
+            "{campaign.title}" 공구와 관련된 모든 주문 데이터가 함께 삭제되며, 되돌릴 수 없습니다.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDeleteConfirmOpen(false)}
+              className="flex-1 border rounded-lg py-2 text-sm"
+            >
+              취소
+            </button>
+            <button
+              onClick={deleteCampaign}
+              disabled={deleting}
+              className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+            >
+              {deleting ? "삭제 중..." : "삭제"}
+            </button>
+          </div>
+        </Overlay>
       )}
 
       {photoTarget && (

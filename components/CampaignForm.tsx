@@ -1,8 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { formatAccountNumber, formatNumberWithCommas } from "@/lib/format";
 
-type ProductInput = { name: string; price: string; stockLimit: string };
+type ProductInput = {
+  name: string;
+  price: string; // 콤마 포함 표시용 값
+  stockLimit: string;
+  imageUrl: string;
+  uploading: boolean;
+};
+
+const emptyProduct: ProductInput = {
+  name: "",
+  price: "",
+  stockLimit: "",
+  imageUrl: "",
+  uploading: false,
+};
 
 export default function CampaignForm({
   onCreated,
@@ -12,11 +27,9 @@ export default function CampaignForm({
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [products, setProducts] = useState<ProductInput[]>([
-    { name: "", price: "", stockLimit: "" },
-  ]);
+  const [products, setProducts] = useState<ProductInput[]>([{ ...emptyProduct }]);
   const [bankName, setBankName] = useState("");
-  const [accountNumber, setAccountNumber] = useState("");
+  const [accountNumberDisplay, setAccountNumberDisplay] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
   const [inquiryUrl, setInquiryUrl] = useState("");
   const [closeDate, setCloseDate] = useState("");
@@ -24,7 +37,7 @@ export default function CampaignForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  function updateProduct(idx: number, field: keyof ProductInput, value: string) {
+  function updateProduct(idx: number, field: keyof ProductInput, value: string | boolean) {
     setProducts((prev) =>
       prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p))
     );
@@ -32,12 +45,30 @@ export default function CampaignForm({
 
   function addProduct() {
     if (products.length >= 3) return;
-    setProducts((prev) => [...prev, { name: "", price: "", stockLimit: "" }]);
+    setProducts((prev) => [...prev, { ...emptyProduct }]);
+  }
+
+  async function handleImageSelect(idx: number, file: File | null) {
+    if (!file) return;
+    updateProduct(idx, "uploading", true);
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await fetch("/api/admin/upload-product-image", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    updateProduct(idx, "uploading", false);
+    if (!res.ok) {
+      setError(data.error || "이미지 업로드에 실패했습니다.");
+      return;
+    }
+    updateProduct(idx, "imageUrl", data.url);
   }
 
   async function submit() {
     setError(null);
-    if (!title || !bankName || !accountNumber || !accountHolder) {
+    if (!title || !bankName || !accountNumberDisplay || !accountHolder) {
       setError("필수 항목을 입력해주세요.");
       return;
     }
@@ -56,14 +87,15 @@ export default function CampaignForm({
       body: JSON.stringify({
         title,
         bankName,
-        accountNumber,
+        accountNumber: accountNumberDisplay, // 서버에서 숫자만 추출해서 저장
         accountHolder,
         inquiryUrl,
         closeDeadline,
         products: products.map((p) => ({
           name: p.name,
-          price: Number(p.price),
+          price: Number(p.price.replace(/[^0-9]/g, "")),
           stockLimit: Number(p.stockLimit),
+          imageUrl: p.imageUrl || undefined,
         })),
       }),
     });
@@ -82,7 +114,7 @@ export default function CampaignForm({
 
       <input
         className="w-full border rounded px-3 py-2 text-sm mb-3"
-        placeholder="공구 제목 (예: 8월 셋째주 앨범 공구)"
+        placeholder="공구 제목"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
       />
@@ -91,13 +123,13 @@ export default function CampaignForm({
       <div className="flex gap-2 mb-3">
         <input
           type="date"
-          className="flex-1 border rounded px-2 py-1.5 text-sm"
+          className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
           value={closeDate}
           onChange={(e) => setCloseDate(e.target.value)}
         />
         <input
           type="time"
-          className="flex-1 border rounded px-2 py-1.5 text-sm"
+          className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
           value={closeTime}
           onChange={(e) => setCloseTime(e.target.value)}
         />
@@ -108,24 +140,41 @@ export default function CampaignForm({
         {products.map((p, idx) => (
           <div key={idx} className="border rounded-lg p-2.5">
             <div className="flex gap-2 mb-1.5">
-              <input
-                className="flex-[2] border rounded px-2 py-1.5 text-sm"
-                placeholder="상품명"
-                value={p.name}
-                onChange={(e) => updateProduct(idx, "name", e.target.value)}
-              />
-              <input
-                className="flex-1 border rounded px-2 py-1.5 text-sm"
-                placeholder="가격"
-                inputMode="numeric"
-                value={p.price}
-                onChange={(e) =>
-                  updateProduct(idx, "price", e.target.value.replace(/[^0-9]/g, ""))
-                }
-              />
+              <label className="w-14 h-14 flex-shrink-0 border rounded overflow-hidden flex items-center justify-center bg-neutral-50 cursor-pointer relative">
+                {p.uploading ? (
+                  <span className="text-[10px] text-neutral-400">업로드중</span>
+                ) : p.imageUrl ? (
+                  <img src={p.imageUrl} alt="상품사진" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[10px] text-neutral-400 text-center px-1">사진<br/>추가</span>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleImageSelect(idx, e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                <input
+                  className="w-full min-w-0 border rounded px-2 py-1.5 text-sm"
+                  placeholder="상품명"
+                  value={p.name}
+                  onChange={(e) => updateProduct(idx, "name", e.target.value)}
+                />
+                <input
+                  className="w-full min-w-0 border rounded px-2 py-1.5 text-sm"
+                  placeholder="가격"
+                  inputMode="numeric"
+                  value={p.price}
+                  onChange={(e) =>
+                    updateProduct(idx, "price", formatNumberWithCommas(e.target.value))
+                  }
+                />
+              </div>
             </div>
             <input
-              className="w-full border rounded px-2 py-1.5 text-sm"
+              className="w-full min-w-0 border rounded px-2 py-1.5 text-sm"
               placeholder="재고 상한 수량"
               inputMode="numeric"
               value={p.stockLimit}
@@ -155,10 +204,10 @@ export default function CampaignForm({
         />
         <input
           className="w-full border rounded px-3 py-2 text-sm"
-          placeholder="계좌번호 (- 없이)"
+          placeholder="계좌번호 (숫자만 입력하면 자동으로 - 표시됨)"
           inputMode="numeric"
-          value={accountNumber}
-          onChange={(e) => setAccountNumber(e.target.value)}
+          value={accountNumberDisplay}
+          onChange={(e) => setAccountNumberDisplay(formatAccountNumber(e.target.value))}
         />
         <input
           className="w-full border rounded px-3 py-2 text-sm"

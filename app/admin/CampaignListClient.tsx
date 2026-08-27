@@ -30,6 +30,8 @@ export default function CampaignListClient() {
   const [closed, setClosed] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     const res = await fetch("/api/admin/campaigns/mine");
@@ -47,6 +49,22 @@ export default function CampaignListClient() {
 
   function goTo(id: string) {
     router.push(`/admin/${id}`);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const res = await fetch(`/api/admin/campaigns/${deleteTarget.id}/delete`, {
+      method: "POST",
+    });
+    setDeleting(false);
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "삭제에 실패했습니다.");
+      return;
+    }
+    setDeleteTarget(null);
+    load();
   }
 
   return (
@@ -68,20 +86,19 @@ export default function CampaignListClient() {
               <p className="text-[13px] text-neutral-400 py-2">진행중인 공구가 없습니다.</p>
             )}
             {active.map((c) => (
-              <button
+              <div
                 key={c.id}
-                onClick={() => goTo(c.id)}
-                className="text-left bg-neutral-50 border rounded-lg p-3 flex items-center justify-between"
+                className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between"
               >
-                <div>
-                  <p className="text-[13px] font-medium">{c.title}</p>
+                <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
+                  <p className="text-[13px] font-medium truncate">{c.title}</p>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
                     주문 {c.order_count}건
                     {c.close_deadline && ` · ${formatDeadline(c.close_deadline)} 마감`}
                   </p>
-                </div>
-                <span className="text-[12px] text-neutral-400">보기 →</span>
-              </button>
+                </button>
+                <span className="text-[12px] text-neutral-400 flex-shrink-0 ml-2">보기 →</span>
+              </div>
             ))}
           </div>
 
@@ -92,20 +109,27 @@ export default function CampaignListClient() {
               </p>
               <div className="flex flex-col gap-2 mb-5">
                 {closed.map((c) => (
-                  <button
+                  <div
                     key={c.id}
-                    onClick={() => goTo(c.id)}
-                    className="text-left bg-neutral-50 border rounded-lg p-3 flex items-center justify-between opacity-70"
+                    className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between opacity-80"
                   >
-                    <div>
-                      <p className="text-[13px] font-medium">{c.title}</p>
+                    <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
+                      <p className="text-[13px] font-medium truncate">{c.title}</p>
                       <p className="text-[11px] text-neutral-500 mt-0.5">
                         주문 {c.order_count}건
                         {c.closed_at && ` · ${formatDeadline(c.closed_at)} 마감됨`}
                       </p>
+                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <button
+                        onClick={() => setDeleteTarget(c)}
+                        className="text-[11px] text-red-500 border border-red-200 rounded px-2 py-1"
+                      >
+                        삭제
+                      </button>
+                      <span className="text-[12px] text-neutral-400">보기 →</span>
                     </div>
-                    <span className="text-[12px] text-neutral-400">보기 →</span>
-                  </button>
+                  </div>
                 ))}
               </div>
             </>
@@ -125,6 +149,32 @@ export default function CampaignListClient() {
         >
           + 새 공구 만들기
         </button>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-5 z-50">
+          <div className="bg-white rounded-2xl border p-5 w-full max-w-sm">
+            <p className="text-[15px] font-medium mb-2">공구를 삭제할까요?</p>
+            <p className="text-[13px] text-neutral-500 mb-4">
+              "{deleteTarget.title}" 공구와 관련된 모든 주문 데이터가 함께 삭제되며, 되돌릴 수 없습니다.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 border rounded-lg py-2 text-sm"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+              >
+                {deleting ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

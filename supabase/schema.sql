@@ -33,6 +33,8 @@ create policy "owner_insert_campaigns" on public.campaigns
   for insert with check (auth.uid() = owner_id);
 create policy "owner_update_campaigns" on public.campaigns
   for update using (auth.uid() = owner_id);
+create policy "owner_delete_campaigns" on public.campaigns
+  for delete using (auth.uid() = owner_id);
 
 -- ------------------------------------------------------------
 -- 2. 상품(products) 테이블 - 공구당 최대 3개
@@ -44,6 +46,7 @@ create table public.products (
   price int not null check (price >= 0),
   stock_limit int not null check (stock_limit >= 0),
   stock_reserved int not null default 0 check (stock_reserved >= 0),
+  image_url text, -- 상품 사진(선택) - product-images 버킷의 public URL
   display_order int not null default 0,
   created_at timestamptz not null default now(),
   constraint stock_not_exceeded check (stock_reserved <= stock_limit)
@@ -474,3 +477,22 @@ $$;
 -- ============================================================
 -- Supabase 대시보드에서 버킷 생성 시 Public 옵션 반드시 OFF
 -- insert into storage.buckets (id, name, public) values ('delivery-photos', 'delivery-photos', false);
+
+-- ============================================================
+-- Storage: 상품사진 버킷 (public - 구매자 화면에 그냥 노출되는 사진이라 공개로 둠)
+-- ============================================================
+-- insert into storage.buckets (id, name, public) values ('product-images', 'product-images', true);
+
+-- ============================================================
+-- 공구 삭제 함수 (마감된 공구 + 관련 주문/상품/로그 전부 삭제)
+-- ============================================================
+create or replace function public.delete_campaign(p_campaign_id uuid)
+returns void
+language plpgsql
+as $$
+begin
+  delete from public.campaigns where id = p_campaign_id;
+  -- products, orders, order_items, order_status_logs는 각 테이블에
+  -- "on delete cascade"로 걸려있어 campaigns 삭제 시 자동으로 함께 삭제됨
+end;
+$$;

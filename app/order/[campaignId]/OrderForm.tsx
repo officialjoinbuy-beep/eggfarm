@@ -10,6 +10,7 @@ type Product = {
   price: number;
   stock_limit: number;
   stock_reserved: number;
+  image_url?: string | null;
 };
 
 export default function OrderForm({
@@ -123,6 +124,13 @@ export default function OrderForm({
                 <span className="absolute top-1.5 right-1.5 text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded">
                   품절
                 </span>
+              )}
+              {p.image_url && (
+                <img
+                  src={p.image_url}
+                  alt={p.name}
+                  className="w-full aspect-square object-cover rounded mb-1.5"
+                />
               )}
               <p className="text-[13px] font-medium mb-0.5">{p.name}</p>
               <p className="text-[12px] text-neutral-500 mb-0.5">{formatWon(p.price)}</p>

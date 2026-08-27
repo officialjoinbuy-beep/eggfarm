@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     accountHolder: string;
     inquiryUrl?: string;
     closeDeadline?: string; // ISO datetime string, optional
-    products: { name: string; price: number; stockLimit: number }[];
+    products: { name: string; price: number; stockLimit: number; imageUrl?: string }[];
   };
 
   const supabase = await createClient();
@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       name: p.name,
       price: p.price,
       stock_limit: p.stockLimit,
+      image_url: p.imageUrl || null,
       display_order: idx,
     }))
   );
