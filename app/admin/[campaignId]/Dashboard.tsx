@@ -1,0 +1,473 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { formatPhone, formatWon } from "@/lib/format";
+import { watermarkImage } from "@/lib/watermark";
+
+type Order = {
+  id: string;
+  nickname: string;
+  phone: string;
+  address: string;
+  total_amount: number;
+  payment_status: "입금확인대기" | "입금확인완료" | "주문취소(미입금)";
+  delivery_status: "배송준비" | "배송중" | "배송완료";
+  payment_deadline: string | null;
+  order_items: { product_name_snapshot: string; quantity: number }[];
+};
+
+type Product = { id: string; name: string; stock_limit: number; stock_reserved: number };
+type Campaign = { id: string; title: string; is_closed: boolean };
+
+const TABS = [
+  { key: "wait", label: "입금확인대기" },
+  { key: "ready", label: "배송준비" },
+  { key: "shipping", label: "배송중" },
+  { key: "done", label: "배송완료" },
+  { key: "cancel", label: "주문취소" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
+
+export default function Dashboard({ campaignId }: { campaignId: string }) {
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [tab, setTab] = useState<TabKey>("wait");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [revertTarget, setRevertTarget] = useState<Order | null>(null);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [photoTarget, setPhotoTarget] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    const res = await fetch(`/api/admin/campaigns/${campaignId}/orders`);
+    if (res.ok) {
+      const data = await res.json();
+      setCampaign(data.campaign);
+      setProducts(data.products ?? []);
+      setOrders(data.orders ?? []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load();
+  }, [campaignId]);
+
+  const byTab: Record<TabKey, Order[]> = {
+    wait: orders.filter((o) => o.payment_status === "입금확인대기"),
+    ready: orders.filter(
+      (o) => o.payment_status === "입금확인완료" && o.delivery_status === "배송준비"
+    ),
+    shipping: orders.filter(
+      (o) => o.payment_status === "입금확인완료" && o.delivery_status === "배송중"
+    ),
+    done: orders.filter((o) => o.delivery_status === "배송완료"),
+    cancel: orders.filter((o) => o.payment_status === "주문취소(미입금)"),
+  };
+
+  async function confirmPayment(orderId: string) {
+    await fetch(`/api/admin/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "confirm_payment" }),
+    });
+    load();
+  }
+
+  async function doRevert() {
+    if (!revertTarget) return;
+    const o = revertTarget;
+    let action = "";
+    if (o.payment_status === "주문취소(미입금)") action = "revert_cancel";
+    else if (o.delivery_status === "배송준비") action = "revert_payment";
+    else if (o.delivery_status === "배송중") action = "revert_shipping";
+    else if (o.delivery_status === "배송완료") action = "revert_delivered";
+
+    const res = await fetch(`/api/admin/orders/${o.id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "되돌리기에 실패했습니다.");
+    }
+    setRevertTarget(null);
+    load();
+  }
+
+  function revertLabel(o: Order) {
+    if (o.payment_status === "주문취소(미입금)") return "주문취소(미입금) → 입금확인대기";
+    if (o.delivery_status === "배송준비") return "배송준비 → 입금확인대기";
+    if (o.delivery_status === "배송중") return "배송중 → 배송준비";
+    if (o.delivery_status === "배송완료") return "배송완료 → 배송중";
+    return "";
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkShip() {
+    await fetch("/api/admin/orders/bulk-ship", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: Array.from(selected) }),
+    });
+    setSelected(new Set());
+    load();
+  }
+
+  async function closeCampaign() {
+    await fetch(`/api/admin/campaigns/${campaignId}/close`, { method: "POST" });
+    setCloseConfirmOpen(false);
+    load();
+  }
+
+  function minutesLeft(deadline: string | null) {
+    if (!deadline) return null;
+    const diff = new Date(deadline).getTime() - Date.now();
+    if (diff <= 0) return 0;
+    return Math.ceil(diff / 60000);
+  }
+
+  if (loading) return <p className="text-center text-neutral-400 py-20 text-sm">불러오는 중...</p>;
+  if (!campaign) return <p className="text-center text-neutral-400 py-20 text-sm">공구를 찾을 수 없습니다.</p>;
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="bg-neutral-50 border rounded-xl p-4">
+          <p className="text-[13px] text-neutral-500 mb-1">총 주문</p>
+          <p className="text-[24px] font-medium">{orders.length}건</p>
+        </div>
+        <div className="bg-neutral-50 border rounded-xl p-4">
+          <p className="text-[13px] text-neutral-500 mb-1">{products[0]?.name ?? "상품"} 재고</p>
+          <p className="text-[24px] font-medium">
+            {products[0] ? products[0].stock_reserved : 0}/{products[0]?.stock_limit ?? 0}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-1.5 overflow-x-auto mb-3 pb-0.5">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-shrink-0 text-[12px] px-2.5 py-1.5 rounded whitespace-nowrap ${
+              tab === t.key ? "bg-neutral-900 text-white" : "bg-neutral-100"
+            }`}
+          >
+            {t.label} <span className="opacity-60">{byTab[t.key].length}</span>
+          </button>
+        ))}
+      </div>
+
+      {tab === "ready" && byTab.ready.length > 0 && (
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-[12px] text-neutral-500 flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={selected.size === byTab.ready.length}
+              onChange={(e) =>
+                setSelected(e.target.checked ? new Set(byTab.ready.map((o) => o.id)) : new Set())
+              }
+            />
+            전체선택
+          </label>
+          <button
+            disabled={selected.size === 0}
+            onClick={bulkShip}
+            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40"
+          >
+            선택건 배송중 처리{selected.size > 0 ? ` (${selected.size})` : ""}
+          </button>
+        </div>
+      )}
+
+      <div className="bg-neutral-50 border rounded-xl overflow-hidden">
+        {byTab[tab].length === 0 && (
+          <p className="text-center text-neutral-400 text-[13px] py-8">주문이 없습니다.</p>
+        )}
+        {byTab[tab].map((o, idx) => (
+          <div
+            key={o.id}
+            className={`flex items-center gap-2.5 p-3 ${
+              idx < byTab[tab].length - 1 ? "border-b" : ""
+            }`}
+          >
+            {tab === "ready" && (
+              <input
+                type="checkbox"
+                checked={selected.has(o.id)}
+                onChange={() => toggleSelect(o.id)}
+              />
+            )}
+            <div className="flex-1">
+              <p className="text-[14px] font-medium">{o.nickname}</p>
+              <p className="text-[12px] text-neutral-500">
+                {o.order_items.map((i) => `${i.product_name_snapshot} · ${i.quantity}개`).join(", ")}
+              </p>
+              {tab === "wait" && (
+                <span className="text-[11px] text-amber-600">
+                  {(() => {
+                    const m = minutesLeft(o.payment_deadline);
+                    return m === null ? "무기한 대기" : `${m}분 남음`;
+                  })()}
+                </span>
+              )}
+            </div>
+
+            {tab === "wait" && (
+              <button
+                onClick={() => confirmPayment(o.id)}
+                className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded"
+              >
+                입금확인
+              </button>
+            )}
+            {tab !== "wait" && (
+              <button
+                onClick={() => setRevertTarget(o)}
+                className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded"
+              >
+                ↩ 되돌리기
+              </button>
+            )}
+            {tab === "shipping" && (
+              <button
+                onClick={() => setPhotoTarget(o)}
+                className="text-[12px] px-2.5 py-1.5 border rounded"
+              >
+                배송완료 처리
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => setCloseConfirmOpen(true)}
+        disabled={campaign.is_closed}
+        className="w-full mt-3.5 border rounded-lg py-2.5 text-sm disabled:opacity-40"
+      >
+        {campaign.is_closed ? "마감됨" : "조기마감"}
+      </button>
+      <a
+        href={`/api/admin/campaigns/${campaignId}/export`}
+        className="block w-full mt-2 text-center border rounded-lg py-2.5 text-sm"
+      >
+        집계표 다운로드
+      </a>
+
+      {revertTarget && (
+        <RevertModal
+          order={revertTarget}
+          label={revertLabel(revertTarget)}
+          onCancel={() => setRevertTarget(null)}
+          onConfirm={doRevert}
+        />
+      )}
+
+      {closeConfirmOpen && (
+        <CloseModal
+          orders={orders}
+          onCancel={() => setCloseConfirmOpen(false)}
+          onConfirm={closeCampaign}
+        />
+      )}
+
+      {photoTarget && (
+        <PhotoUploadModal
+          order={photoTarget}
+          onCancel={() => setPhotoTarget(null)}
+          onDone={() => {
+            setPhotoTarget(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function RevertModal({
+  order,
+  label,
+  onCancel,
+  onConfirm,
+}: {
+  order: Order;
+  label: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Overlay>
+      <div className="flex items-center gap-2 mb-2">
+        <p className="text-[15px] font-medium">상태를 되돌릴까요?</p>
+      </div>
+      <p className="text-[13px] text-neutral-500 mb-1">{order.nickname}님 주문을</p>
+      <p className="text-[13px] mb-4">
+        <strong>{label}</strong>으로 되돌립니다.
+      </p>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 border rounded-lg py-2 text-sm">
+          취소
+        </button>
+        <button
+          onClick={onConfirm}
+          className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm"
+        >
+          되돌리기
+        </button>
+      </div>
+    </Overlay>
+  );
+}
+
+function CloseModal({
+  orders,
+  onCancel,
+  onConfirm,
+}: {
+  orders: Order[];
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const waitCount = orders.filter((o) => o.payment_status === "입금확인대기").length;
+  const validOrders = orders.filter((o) => o.payment_status !== "주문취소(미입금)");
+  const total = validOrders.reduce((s, o) => s + o.total_amount, 0);
+
+  return (
+    <Overlay>
+      <p className="text-[15px] font-medium mb-2">공구를 마감할까요?</p>
+      <p className="text-[13px] text-neutral-500 mb-3">
+        마감 후에는 주문접수가 중단되며, 되돌릴 수 없습니다.
+      </p>
+      <div className="bg-neutral-100 rounded-lg p-3 mb-4 text-[13px]">
+        <div className="flex justify-between mb-1">
+          <span className="text-neutral-500">총 주문건</span>
+          <span>{orders.length}건</span>
+        </div>
+        <div className="flex justify-between mb-1">
+          <span className="text-neutral-500">입금확인대기</span>
+          <span className="text-amber-600">{waitCount}건</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-neutral-500">총 결제금액</span>
+          <span>{formatWon(total)}</span>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 border rounded-lg py-2 text-sm">
+          취소
+        </button>
+        <button
+          onClick={onConfirm}
+          className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm"
+        >
+          마감하기
+        </button>
+      </div>
+    </Overlay>
+  );
+}
+
+function PhotoUploadModal({
+  order,
+  onCancel,
+  onDone,
+}: {
+  order: Order;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  function onSelect(f: File | null) {
+    setFile(f);
+    setPreview(f ? URL.createObjectURL(f) : null);
+  }
+
+  async function submit() {
+    if (!file) return;
+    setUploading(true);
+    const watermarked = await watermarkImage(file);
+    const formData = new FormData();
+    formData.append("photo", watermarked, "delivery.jpg");
+    const res = await fetch(`/api/admin/orders/${order.id}/photo`, {
+      method: "POST",
+      body: formData,
+    });
+    setUploading(false);
+    if (!res.ok) {
+      alert("업로드에 실패했습니다.");
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <Overlay>
+      <p className="text-[15px] font-medium mb-1">배송완료 처리</p>
+      <p className="text-[13px] text-neutral-500 mb-4">
+        {order.nickname} · {order.order_items.map((i) => `${i.product_name_snapshot} ${i.quantity}개`).join(", ")}
+      </p>
+
+      <label className="relative border border-dashed rounded-lg aspect-[4/3] flex flex-col items-center justify-center gap-1.5 mb-3.5 cursor-pointer overflow-hidden">
+        <span className="absolute top-2 right-2 text-[13px] font-semibold bg-black/55 text-white px-2 py-1 rounded">
+          {order.address}
+        </span>
+        {preview ? (
+          <img src={preview} className="w-full h-full object-cover" alt="preview" />
+        ) : (
+          <>
+            <span className="text-[13px] text-neutral-500">배송사진 촬영 또는 업로드</span>
+          </>
+        )}
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+        />
+      </label>
+
+      <div className="bg-neutral-100 rounded-lg p-2.5 flex items-center gap-2 mb-4">
+        <p className="text-[12px] text-neutral-500">
+          업로드 시 촬영시간이 자동으로 워터마크 됩니다
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 border rounded-lg py-2 text-sm">
+          취소
+        </button>
+        <button
+          onClick={submit}
+          disabled={!file || uploading}
+          className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+        >
+          {uploading ? "업로드 중..." : "완료 처리"}
+        </button>
+      </div>
+    </Overlay>
+  );
+}
+
+function Overlay({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-5 z-50">
+      <div className="bg-white rounded-2xl border p-5 w-full max-w-sm shadow-xl">{children}</div>
+    </div>
+  );
+}
