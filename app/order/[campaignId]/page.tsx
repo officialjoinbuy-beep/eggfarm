@@ -12,7 +12,7 @@ export default async function OrderPage({
 
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("id, title, is_closed, start_at")
+    .select("id, title, is_closed, start_at, fulfillment_mode, delivery_fee")
     .eq("id", campaignId)
     .single();
 
@@ -58,6 +58,7 @@ export default async function OrderPage({
     .from("products")
     .select("id, name, price, stock_limit, stock_reserved, max_per_person, image_url")
     .eq("campaign_id", campaignId)
+    .eq("is_active", true)
     .order("display_order");
 
   const { data: complexes } = await supabase
@@ -73,7 +74,9 @@ export default async function OrderPage({
         campaignId={campaignId}
         title={campaign.title}
         products={products ?? []}
-        complexes={complexes ?? []}
+        complexes={campaign.fulfillment_mode === "pickup_only" ? [] : complexes ?? []}
+        fulfillmentMode={campaign.fulfillment_mode || "hybrid"}
+        deliveryFee={campaign.delivery_fee || 0}
       />
     </main>
   );

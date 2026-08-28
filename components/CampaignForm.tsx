@@ -30,6 +30,8 @@ export type CampaignPrefill = {
   accountHolder: string;
   inquiryUrl: string;
   complexes: string[];
+  fulfillmentMode: "pickup_only" | "delivery_only" | "hybrid";
+  deliveryFee: number;
   products: {
     name: string;
     price: string;
@@ -38,6 +40,12 @@ export type CampaignPrefill = {
     imageUrl: string;
   }[];
 };
+
+const MODE_OPTIONS: { value: "pickup_only" | "delivery_only" | "hybrid"; label: string }[] = [
+  { value: "pickup_only", label: "🏢 픽업전용" },
+  { value: "delivery_only", label: "🚚 배송전용" },
+  { value: "hybrid", label: "🏢🚚 픽업or배송" },
+];
 
 export default function CampaignForm({
   onCreated,
@@ -49,6 +57,12 @@ export default function CampaignForm({
   prefill?: CampaignPrefill;
 }) {
   const [title, setTitle] = useState(prefill?.title ?? "");
+  const [fulfillmentMode, setFulfillmentMode] = useState<"pickup_only" | "delivery_only" | "hybrid">(
+    prefill?.fulfillmentMode ?? "hybrid"
+  );
+  const [deliveryFee, setDeliveryFee] = useState(
+    prefill?.deliveryFee ? formatNumberWithCommas(String(prefill.deliveryFee)) : ""
+  );
   const [products, setProducts] = useState<ProductInput[]>(
     prefill && prefill.products.length > 0
       ? prefill.products.map((p) => ({ ...p, uploading: false }))
@@ -118,7 +132,7 @@ export default function CampaignForm({
       return;
     }
     const validComplexes = complexes.map((c) => c.trim()).filter(Boolean);
-    if (validComplexes.length === 0) {
+    if (fulfillmentMode !== "pickup_only" && validComplexes.length === 0) {
       setError("배송 가능한 아파트 단지를 1개 이상 등록해주세요.");
       return;
     }
@@ -151,7 +165,9 @@ export default function CampaignForm({
         inquiryUrl,
         startAt,
         closeDeadline,
-        complexes: validComplexes,
+        fulfillmentMode,
+        deliveryFee: fulfillmentMode === "pickup_only" ? 0 : Number(deliveryFee.replace(/[^0-9]/g, "")) || 0,
+        complexes: fulfillmentMode === "pickup_only" ? [] : validComplexes,
         products: products.map((p) => ({
           name: p.name,
           price: Number(p.price.replace(/[^0-9]/g, "")),
@@ -222,35 +238,66 @@ export default function CampaignForm({
         />
       </div>
 
-      <p className="text-[12px] text-neutral-500 mb-1.5">
-        배송 가능한 아파트 단지 (등록된 단지만 주문 가능)
-      </p>
-      <div className="flex flex-col gap-2 mb-3">
-        {complexes.map((c, idx) => (
-          <div key={idx} className="flex gap-2">
-            <input
-              className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-              placeholder="아파트 단지명"
-              value={c}
-              onChange={(e) => updateComplex(idx, e.target.value)}
-            />
-            {complexes.length > 1 && (
-              <button
-                onClick={() => removeComplex(idx)}
-                className="flex-shrink-0 w-8 border rounded text-neutral-400"
-              >
-                ×
-              </button>
-            )}
-          </div>
+      <p className="text-[12px] text-neutral-500 mb-1.5">수령방식 (생성 후 변경 불가)</p>
+      <div className="flex gap-1.5 mb-3">
+        {MODE_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setFulfillmentMode(opt.value)}
+            className={`flex-1 border rounded-lg py-2 text-[12px] ${
+              fulfillmentMode === opt.value ? "bg-neutral-900 text-white" : "text-neutral-500"
+            }`}
+          >
+            {opt.label}
+          </button>
         ))}
-        <button
-          onClick={addComplex}
-          className="border border-dashed rounded-lg py-2 text-center text-neutral-500 text-[13px]"
-        >
-          + 단지 추가
-        </button>
       </div>
+
+      {fulfillmentMode !== "pickup_only" && (
+        <>
+          <p className="text-[12px] text-neutral-500 mb-1.5">
+            배송 가능한 아파트 단지 (등록된 단지만 주문 가능)
+          </p>
+          <div className="flex flex-col gap-2 mb-3">
+            {complexes.map((c, idx) => (
+              <div key={idx} className="flex gap-2">
+                <input
+                  className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+                  placeholder="아파트 단지명"
+                  value={c}
+                  onChange={(e) => updateComplex(idx, e.target.value)}
+                />
+                {complexes.length > 1 && (
+                  <button
+                    onClick={() => removeComplex(idx)}
+                    className="flex-shrink-0 w-8 border rounded text-neutral-400"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              onClick={addComplex}
+              className="border border-dashed rounded-lg py-2 text-center text-neutral-500 text-[13px]"
+            >
+              + 단지 추가
+            </button>
+          </div>
+
+          <p className="text-[12px] text-neutral-500 mb-1.5">
+            문앞배송 배송비 (구매자 부담, 1건당 고정금액 - 기본 0원)
+          </p>
+          <input
+            className="w-full border rounded px-3 py-2 text-sm mb-3"
+            placeholder="배송비"
+            inputMode="numeric"
+            value={deliveryFee}
+            onChange={(e) => setDeliveryFee(formatNumberWithCommas(e.target.value))}
+          />
+        </>
+      )}
 
       <p className="text-[12px] text-neutral-500 mb-1.5">상품 (최대 3개)</p>
       <div className="flex flex-col gap-2 mb-3">

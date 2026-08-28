@@ -140,6 +140,18 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         );
       }
+      if (error.message?.includes("PICKUP_NOT_AVAILABLE")) {
+        return NextResponse.json(
+          { error: "이 공구는 현장픽업을 지원하지 않습니다." },
+          { status: 400 }
+        );
+      }
+      if (error.message?.includes("PRODUCT_INACTIVE")) {
+        return NextResponse.json(
+          { error: "선택하신 상품 중 판매중지된 상품이 있습니다. 다시 확인해주세요." },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({ error: "주문 처리 중 오류가 발생했습니다." }, { status: 500 });
     }
     return NextResponse.json({ orderId });
@@ -184,6 +196,18 @@ export async function POST(req: NextRequest) {
     if (error.message?.includes("CAMPAIGN_CLOSED")) {
       return NextResponse.json(
         { error: "죄송합니다, 방금 마감되었습니다." },
+        { status: 409 }
+      );
+    }
+    if (error.message?.includes("DELIVERY_NOT_AVAILABLE")) {
+      return NextResponse.json(
+        { error: "이 공구는 문앞배송을 지원하지 않습니다." },
+        { status: 400 }
+      );
+    }
+    if (error.message?.includes("PRODUCT_INACTIVE")) {
+      return NextResponse.json(
+        { error: "선택하신 상품 중 판매중지된 상품이 있습니다. 다시 확인해주세요." },
         { status: 409 }
       );
     }

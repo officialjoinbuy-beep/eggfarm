@@ -13,7 +13,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action, signature } = await req.json();
+  const { action, signature, extraOrderIds } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -82,13 +82,17 @@ export async function PATCH(
       if (!signature) {
         return NextResponse.json({ error: "수령 서명이 필요합니다." }, { status: 400 });
       }
-      const { error } = await supabase.rpc("set_pickup_status", {
-        p_order_id: id,
-        p_to: "수령완료",
-      });
-      rpcError = error;
-      if (!error) {
-        await supabase.from("orders").update({ pickup_signature: signature }).eq("id", id);
+      const ids: string[] = [id, ...((extraOrderIds as string[]) || [])];
+      for (const orderId of ids) {
+        const { error } = await supabase.rpc("set_pickup_status", {
+          p_order_id: orderId,
+          p_to: "수령완료",
+        });
+        if (error) {
+          rpcError = error;
+          break;
+        }
+        await supabase.from("orders").update({ pickup_signature: signature }).eq("id", orderId);
       }
       break;
     }
@@ -108,6 +112,21 @@ export async function PATCH(
       }
       break;
     }
+    case "revert_pickup": {
+      const { error } = await supabase.rpc("revert_pickup_complete", { p_order_id: id });
+      rpcError = error;
+      break;
+    }
+    case "cancel_order": {
+      const { error } = await supabase.rpc("cancel_confirmed_order", { p_order_id: id });
+      rpcError = error;
+      break;
+    }
+    case "mark_refund_done": {
+      const { error } = await supabase.rpc("mark_refund_completed", { p_order_id: id });
+      rpcError = error;
+      break;
+    }
     default:
       return NextResponse.json({ error: "알 수 없는 처리입니다." }, { status: 400 });
   }
@@ -118,6 +137,21 @@ export async function PATCH(
         { error: "재고 부족으로 되돌릴 수 없습니다." },
         { status: 409 }
       );
+    }
+    if (rpcError.message?.includes("ALREADY_SHIPPED")) {
+      return NextResponse.json(
+        { error: "이미 배송이 시작된 주문은 취소할 수 없습니다. 관리자에게 1:1 문의해주세요." },
+        { status: 409 }
+      );
+    }
+    if (rpcError.message?.includes("ALREADY_PICKED_UP")) {
+      return NextResponse.json(
+        { error: "이미 수령 처리된 주문은 취소할 수 없습니다. 관리자에게 1:1 문의해주세요." },
+        { status: 409 }
+      );
+    }
+    if (rpcError.message?.includes("NOT_CANCELLABLE") || rpcError.message?.includes("ALREADY_CANCELLED")) {
+      return NextResponse.json({ error: "취소할 수 없는 주문 상태입니다." }, { status: 409 });
     }
     return NextResponse.json({ error: "처리 중 오류가 발생했습니다." }, { status: 500 });
   }

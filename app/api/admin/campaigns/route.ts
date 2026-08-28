@@ -14,6 +14,8 @@ export async function POST(req: NextRequest) {
     closeDeadline,
     complexes,
     products,
+    fulfillmentMode,
+    deliveryFee,
   } = body as {
     title: string;
     bankName: string;
@@ -23,6 +25,8 @@ export async function POST(req: NextRequest) {
     startAt?: string; // ISO datetime string, optional
     closeDeadline?: string; // ISO datetime string, optional
     complexes: string[];
+    fulfillmentMode?: "pickup_only" | "delivery_only" | "hybrid";
+    deliveryFee?: number;
     products: {
       name: string;
       price: number;
@@ -47,8 +51,10 @@ export async function POST(req: NextRequest) {
   if (validProducts.length === 0 || validProducts.length > 3) {
     return NextResponse.json({ error: "상품은 1~3개까지 등록 가능합니다." }, { status: 400 });
   }
+  const mode: "pickup_only" | "delivery_only" | "hybrid" =
+    fulfillmentMode === "pickup_only" || fulfillmentMode === "delivery_only" ? fulfillmentMode : "hybrid";
   const validComplexes = (complexes || []).map((c) => c.trim()).filter(Boolean);
-  if (validComplexes.length === 0) {
+  if (mode !== "pickup_only" && validComplexes.length === 0) {
     return NextResponse.json(
       { error: "배송 가능한 아파트 단지를 1개 이상 등록해주세요." },
       { status: 400 }
@@ -72,6 +78,8 @@ export async function POST(req: NextRequest) {
       inquiry_url: inquiryUrl || null,
       start_at: startAt || null,
       close_deadline: closeDeadline || null,
+      fulfillment_mode: mode,
+      delivery_fee: mode === "pickup_only" ? 0 : Math.max(0, Number(deliveryFee) || 0),
     })
     .select("id")
     .single();

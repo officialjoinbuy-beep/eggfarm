@@ -60,7 +60,12 @@ export default function StaffManagementClient() {
 
   async function removeStaff(id: string) {
     if (!window.confirm("이 배송담당자 정보를 완전히 삭제할까요? 되돌릴 수 없습니다.")) return;
-    await fetch(`/api/admin/staff/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/staff/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "삭제에 실패했습니다.");
+      return;
+    }
     load();
   }
 

@@ -12,6 +12,7 @@ type CampaignDetail = {
   inquiry_url: string | null;
   close_deadline: string | null;
   start_at: string | null;
+  fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
 };
 
 type ProductDetail = {
@@ -21,6 +22,7 @@ type ProductDetail = {
   stock_limit: number;
   stock_reserved: number;
   max_per_person: number | null;
+  is_active: boolean;
 };
 
 export default function EditCampaignModal({
@@ -43,16 +45,21 @@ export default function EditCampaignModal({
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
   const [complexes, setComplexes] = useState<string[]>([""]);
+  const [fulfillmentMode, setFulfillmentMode] = useState<"pickup_only" | "delivery_only" | "hybrid">(
+    "hybrid"
+  );
   const [products, setProducts] = useState<
     {
-      id: string;
+      id: string; // 신규 추가 상품은 빈 문자열
       name: string;
       price: string;
       stockLimit: string;
       maxPerPerson: string;
       stockReserved: number;
+      isActive: boolean;
     }[]
   >([]);
+  const [deletedProductIds, setDeletedProductIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -79,6 +86,7 @@ export default function EditCampaignModal({
         }
         const names: string[] = (data.complexes || []).map((x: { name: string }) => x.name);
         setComplexes(names.length > 0 ? names : [""]);
+        setFulfillmentMode(c.fulfillment_mode || "hybrid");
         const p: ProductDetail[] = data.products || [];
         setProducts(
           p.map((x) => ({
@@ -88,6 +96,7 @@ export default function EditCampaignModal({
             stockLimit: String(x.stock_limit),
             maxPerPerson: x.max_per_person != null ? String(x.max_per_person) : "",
             stockReserved: x.stock_reserved,
+            isActive: x.is_active,
           }))
         );
       }
@@ -112,6 +121,22 @@ export default function EditCampaignModal({
   ) {
     setProducts((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)));
   }
+  function toggleProductActive(idx: number) {
+    setProducts((prev) => prev.map((p, i) => (i === idx ? { ...p, isActive: !p.isActive } : p)));
+  }
+  function addProduct() {
+    if (products.length >= 3) return;
+    setProducts((prev) => [
+      ...prev,
+      { id: "", name: "", price: "", stockLimit: "", maxPerPerson: "", stockReserved: 0, isActive: true },
+    ]);
+  }
+  function removeProduct(idx: number) {
+    const p = products[idx];
+    if (p.stockReserved > 0) return; // 주문 이력 있는 상품은 삭제 불가(방어적으로 한 번 더 체크)
+    if (p.id) setDeletedProductIds((prev) => [...prev, p.id]);
+    setProducts((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   async function save() {
     setError(null);
@@ -120,8 +145,12 @@ export default function EditCampaignModal({
       return;
     }
     const validComplexes = complexes.map((c) => c.trim()).filter(Boolean);
-    if (validComplexes.length === 0) {
+    if (fulfillmentMode !== "pickup_only" && validComplexes.length === 0) {
       setError("배송 가능한 아파트 단지를 1개 이상 등록해주세요.");
+      return;
+    }
+    if (products.length === 0) {
+      setError("상품을 1개 이상 등록해주세요.");
       return;
     }
     for (const p of products) {
@@ -165,12 +194,14 @@ export default function EditCampaignModal({
         closeDeadline,
         complexes: validComplexes,
         products: products.map((p) => ({
-          id: p.id,
+          id: p.id || undefined,
           name: p.name,
           price: Number(p.price.replace(/[^0-9]/g, "")),
           stockLimit: Number(p.stockLimit),
           maxPerPerson: p.maxPerPerson ? Number(p.maxPerPerson) : null,
+          isActive: p.isActive,
         })),
+        deletedProductIds,
       }),
     });
     const data = await res.json();
@@ -231,6 +262,9 @@ export default function EditCampaignModal({
             </div>
 
             <p className="text-[12px] text-neutral-500 mb-1.5">배송 가능한 아파트 단지</p>
+            {fulfillmentMode === "pickup_only" ? (
+              <p className="text-[12px] text-neutral-400 mb-3">픽업전용 공구는 단지 등록이 필요 없습니다.</p>
+            ) : (
             <div className="flex flex-col gap-2 mb-3">
               {complexes.map((c, idx) => (
                 <div key={idx} className="flex gap-2">
@@ -257,11 +291,12 @@ export default function EditCampaignModal({
                 + 단지 추가
               </button>
             </div>
+            )}
 
             <p className="text-[12px] text-neutral-500 mb-1.5">상품 정보 수정</p>
             <div className="flex flex-col gap-2 mb-3">
               {products.map((p, idx) => (
-                <div key={p.id} className="border rounded-lg p-2.5">
+                <div key={idx} className="border rounded-lg p-2.5">
                   <input
                     className="w-full border rounded px-2 py-1.5 text-sm mb-1.5"
                     placeholder="상품명"
@@ -287,7 +322,7 @@ export default function EditCampaignModal({
                     />
                   </div>
                   <input
-                    className="w-full min-w-0 border rounded px-2 py-1.5 text-sm"
+                    className="w-full min-w-0 border rounded px-2 py-1.5 text-sm mb-1.5"
                     placeholder="인당 최대구매(선택)"
                     inputMode="numeric"
                     value={p.maxPerPerson}
@@ -295,11 +330,39 @@ export default function EditCampaignModal({
                       updateProduct(idx, "maxPerPerson", e.target.value.replace(/[^0-9]/g, ""))
                     }
                   />
-                  <p className="text-[11px] text-neutral-400 mt-1">
-                    현재 예약(주문)된 수량: {p.stockReserved}개 — 이보다 적게 줄일 수 없음
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-neutral-400">
+                      {p.id ? `주문된 수량: ${p.stockReserved}개` : "신규 상품"}
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => toggleProductActive(idx)}
+                        className={`text-[11px] border rounded px-2 py-1 ${
+                          p.isActive ? "text-neutral-500" : "text-amber-600 border-amber-300"
+                        }`}
+                      >
+                        {p.isActive ? "판매중지" : "판매중지됨 (해제)"}
+                      </button>
+                      {p.stockReserved === 0 && (
+                        <button
+                          onClick={() => removeProduct(idx)}
+                          className="text-[11px] border border-red-200 text-red-500 rounded px-2 py-1"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
+              {products.length < 3 && (
+                <button
+                  onClick={addProduct}
+                  className="border border-dashed rounded-lg py-2 text-center text-neutral-500 text-[13px]"
+                >
+                  + 상품 추가
+                </button>
+              )}
             </div>
 
             <p className="text-[12px] text-neutral-500 mb-1.5">입금 계좌</p>

@@ -12,8 +12,19 @@ export async function GET() {
 
   const { data: campaigns } = await supabase
     .from("campaigns")
-    .select("id, title, is_closed, close_deadline, closed_at, start_at, created_at")
+    .select("id, title, is_closed, close_deadline, closed_at, start_at, created_at, fulfillment_mode")
     .eq("owner_id", user.id);
+
+  const { data: staleGroups } = await supabase.rpc("list_stale_pending_pickups", {
+    p_owner_id: user.id,
+    p_days: 7,
+  });
+  const staleCountByCampaign = Object.fromEntries(
+    ((staleGroups ?? []) as { campaign_id: string; stale_count: number }[]).map((g) => [
+      g.campaign_id,
+      g.stale_count,
+    ])
+  );
 
   const withCounts = await Promise.all(
     (campaigns ?? []).map(async (c) => {
@@ -21,7 +32,7 @@ export async function GET() {
         .from("orders")
         .select("id", { count: "exact", head: true })
         .eq("campaign_id", c.id);
-      return { ...c, order_count: count ?? 0 };
+      return { ...c, order_count: count ?? 0, stale_pickup_count: staleCountByCampaign[c.id] ?? 0 };
     })
   );
 

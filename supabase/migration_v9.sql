@@ -59,7 +59,7 @@ create or replace function public.create_delivery_staff_link(
   p_staff_id uuid,
   p_expires_at timestamptz
 )
-returns table(id uuid, token text, expires_at timestamptz)
+returns table(link_id uuid, link_token text, link_expires_at timestamptz)
 language plpgsql
 as $$
 declare
@@ -136,6 +136,8 @@ alter table public.noshow_records
 
 -- 기존엔 select/insert 정책만 있고 update 정책이 없어 제외 처리(update)가
 -- RLS에 막혀 실제로는 아무 것도 바뀌지 않는 문제가 있었음 - update 정책 추가.
+-- (재실행해도 안전하도록 먼저 지우고 다시 생성)
+drop policy if exists "owner_update_noshow" on public.noshow_records;
 create policy "owner_update_noshow" on public.noshow_records
   for update using (auth.uid() = owner_id);
 

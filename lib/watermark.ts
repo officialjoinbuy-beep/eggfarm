@@ -23,7 +23,10 @@ export async function watermarkImage(file: File): Promise<Blob> {
     .replace(/\. /g, "-")
     .replace(".", "");
 
-  const fontSize = 22; // 이미지 해상도와 무관하게 항상 고정 크기로 표시(작은 사진에서 과대 확대 방지)
+  const fontSize = Math.min(64, Math.max(18, Math.round(canvas.width * 0.028))); // 사진 너비의
+    // 약 2.8%, 18~64px 사이로 clamp - 해상도에 비례하게 해서 고해상도 폰카메라 사진에서도
+    // 화면 표시 시 눈에 잘 띄면서, 아주 작은 사진에서 과대 확대되는 것도 방지
+    // (기존엔 22px 고정이라 4000px대 사진에서는 사실상 안 보이는 크기였음)
   ctx.font = `${fontSize}px sans-serif`;
   const padding = fontSize * 0.6;
   const textWidth = ctx.measureText(label).width;

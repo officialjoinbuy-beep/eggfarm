@@ -30,6 +30,15 @@ export async function POST(
 
   const formData = await req.formData();
   const file = formData.get("photo") as File | null;
+  const extraOrderIdsRaw = formData.get("extraOrderIds") as string | null;
+  let extraOrderIds: string[] = [];
+  if (extraOrderIdsRaw) {
+    try {
+      extraOrderIds = JSON.parse(extraOrderIdsRaw);
+    } catch {
+      extraOrderIds = [];
+    }
+  }
   if (!file) {
     return NextResponse.json({ error: "사진을 첨부해주세요." }, { status: 400 });
   }
@@ -47,17 +56,21 @@ export async function POST(
     return NextResponse.json({ error: "사진 업로드에 실패했습니다." }, { status: 500 });
   }
 
-  const { error: updateError } = await supabase
-    .from("orders")
-    .update({
-      delivery_photo_url: path,
-      delivery_status: "배송완료",
-      delivery_completed_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (updateError) {
-    return NextResponse.json({ error: "상태 업데이트에 실패했습니다." }, { status: 500 });
+  // 같은 연락처로 대기 중이던 다른 주문들도 진행자가 선택했다면 같은 사진으로
+  // 함께 배송완료 처리한다 (문 앞에 한 번 놓고 사진 한 장 찍는 실제 흐름과 맞춤).
+  const ids = [id, ...extraOrderIds];
+  for (const orderId of ids) {
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({
+        delivery_photo_url: orderId === id ? path : path, // 동일 사진 경로 공유
+        delivery_status: "배송완료",
+        delivery_completed_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
+    if (updateError && orderId === id) {
+      return NextResponse.json({ error: "상태 업데이트에 실패했습니다." }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true });

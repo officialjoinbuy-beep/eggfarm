@@ -19,7 +19,7 @@ export async function GET(
   const { data: campaign } = await supabase
     .from("campaigns")
     .select(
-      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed"
+      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed, fulfillment_mode, delivery_fee"
     )
     .eq("id", id)
     .single();
@@ -36,7 +36,7 @@ export async function GET(
 
   const { data: products } = await supabase
     .from("products")
-    .select("id, name, price, stock_limit, stock_reserved, max_per_person")
+    .select("id, name, price, stock_limit, stock_reserved, max_per_person, is_active, image_url")
     .eq("campaign_id", id)
     .order("display_order");
 
@@ -60,6 +60,7 @@ export async function PATCH(
     closeDeadline,
     complexes,
     products,
+    deletedProductIds,
   } = body as {
     title: string;
     bankName: string;
@@ -70,12 +71,14 @@ export async function PATCH(
     closeDeadline?: string | null;
     complexes: string[];
     products?: {
-      id: string;
+      id?: string; // 없으면 신규 추가
       name: string;
       price: number;
       stockLimit: number;
       maxPerPerson?: number | null;
+      isActive?: boolean;
     }[];
+    deletedProductIds?: string[];
   };
 
   const supabase = await createClient();
@@ -89,8 +92,18 @@ export async function PATCH(
   if (!title || !bankName || !accountNumber || !accountHolder) {
     return NextResponse.json({ error: "필수 항목을 입력해주세요." }, { status: 400 });
   }
+
+  const { data: existingCampaign } = await supabase
+    .from("campaigns")
+    .select("fulfillment_mode")
+    .eq("id", id)
+    .single();
+  if (!existingCampaign) {
+    return NextResponse.json({ error: "공구를 찾을 수 없습니다." }, { status: 404 });
+  }
+
   const validComplexes = (complexes || []).map((c) => c.trim()).filter(Boolean);
-  if (validComplexes.length === 0) {
+  if (existingCampaign.fulfillment_mode !== "pickup_only" && validComplexes.length === 0) {
     return NextResponse.json(
       { error: "배송 가능한 아파트 단지를 1개 이상 등록해주세요." },
       { status: 400 }
@@ -103,21 +116,39 @@ export async function PATCH(
     return NextResponse.json({ error: "시작일시는 마감일시보다 이전이어야 합니다." }, { status: 400 });
   }
 
-  // 상품 재고상한이 이미 예약된 수량보다 적게 줄어드는지 검증
-  if (products) {
-    for (const p of products) {
-      const { data: existing } = await supabase
-        .from("products")
-        .select("stock_reserved")
-        .eq("id", p.id)
-        .single();
-      if (existing && p.stockLimit < existing.stock_reserved) {
-        return NextResponse.json(
-          { error: `상품 재고상한은 이미 예약된 수량(${existing.stock_reserved}개)보다 적게 설정할 수 없습니다.` },
-          { status: 400 }
-        );
-      }
+  // 상품 재고상한이 이미 예약된 수량보다 적게 줄어드는지 검증 (기존 상품만 해당)
+  for (const p of products || []) {
+    if (!p.id) continue;
+    const { data: existing } = await supabase
+      .from("products")
+      .select("stock_reserved")
+      .eq("id", p.id)
+      .single();
+    if (existing && p.stockLimit < existing.stock_reserved) {
+      return NextResponse.json(
+        { error: `상품 재고상한은 이미 예약된 수량(${existing.stock_reserved}개)보다 적게 설정할 수 없습니다.` },
+        { status: 400 }
+      );
     }
+  }
+
+  // 상품 삭제 (주문이력 없는 상품만 - DB 함수가 원자적으로 검증)
+  for (const productId of deletedProductIds || []) {
+    const { error: delError } = await supabase.rpc("delete_product_if_unordered", {
+      p_product_id: productId,
+    });
+    if (delError) {
+      return NextResponse.json(
+        { error: "이미 주문이 들어간 상품은 삭제할 수 없습니다." },
+        { status: 409 }
+      );
+    }
+  }
+
+  const remainingCount =
+    (products || []).length; // 클라이언트가 삭제 예정 상품은 이미 목록에서 제외해서 보냄
+  if (remainingCount === 0 || remainingCount > 3) {
+    return NextResponse.json({ error: "상품은 1~3개까지 등록 가능합니다." }, { status: 400 });
   }
 
   const { error: updateError } = await supabase
@@ -151,18 +182,33 @@ export async function PATCH(
     return NextResponse.json({ error: "단지 목록 저장에 실패했습니다." }, { status: 500 });
   }
 
-  // 상품 정보 수정
+  // 상품 정보 수정/추가 (id 있으면 수정, 없으면 신규 - 주문이력 없는 상품만 자유롭게
+  // 추가/수정 가능하고, 이미 주문 들어간 상품은 이름/가격 등은 그대로 두고 판매중지만 토글)
   if (products) {
-    for (const p of products) {
-      await supabase
-        .from("products")
-        .update({
+    for (const [idx, p] of products.entries()) {
+      if (p.id) {
+        await supabase
+          .from("products")
+          .update({
+            name: p.name,
+            price: p.price,
+            stock_limit: p.stockLimit,
+            max_per_person: p.maxPerPerson ?? null,
+            is_active: p.isActive ?? true,
+            display_order: idx,
+          })
+          .eq("id", p.id);
+      } else {
+        await supabase.from("products").insert({
+          campaign_id: id,
           name: p.name,
           price: p.price,
           stock_limit: p.stockLimit,
           max_per_person: p.maxPerPerson ?? null,
-        })
-        .eq("id", p.id);
+          is_active: true,
+          display_order: idx,
+        });
+      }
     }
   }
 

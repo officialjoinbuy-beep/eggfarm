@@ -24,8 +24,23 @@ export async function GET(req: NextRequest) {
   // 본인 소유 전체 공구 (달력에 걸치는 공구를 클라이언트에서 판단)
   const { data: campaigns } = await supabase
     .from("campaigns")
-    .select("id, title, start_at, close_deadline, closed_at, is_closed, created_at")
+    .select("id, title, start_at, close_deadline, closed_at, is_closed, created_at, fulfillment_mode")
     .eq("owner_id", user.id);
+
+  const { data: staleGroups } = await supabase.rpc("list_stale_pending_pickups", {
+    p_owner_id: user.id,
+    p_days: 7,
+  });
+  const staleCountByCampaign = Object.fromEntries(
+    ((staleGroups ?? []) as { campaign_id: string; stale_count: number }[]).map((g) => [
+      g.campaign_id,
+      g.stale_count,
+    ])
+  );
+  const campaignsWithStale = (campaigns ?? []).map((c) => ({
+    ...c,
+    stale_pickup_count: staleCountByCampaign[c.id] ?? 0,
+  }));
 
   // 이번달 배송완료 매출 합계 (본인 소유 공구의 주문만)
   const { data: deliveredOrders } = await supabase
@@ -45,6 +60,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     monthRevenue,
     monthDeliveredCount,
-    campaigns: campaigns ?? [],
+    campaigns: campaignsWithStale,
   });
 }

@@ -21,11 +21,15 @@ export default function OrderForm({
   title,
   products,
   complexes,
+  fulfillmentMode,
+  deliveryFee,
 }: {
   campaignId: string;
   title: string;
   products: Product[];
   complexes: Complex[];
+  fulfillmentMode: "pickup_only" | "delivery_only" | "hybrid";
+  deliveryFee: number;
 }) {
   const router = useRouter();
   const [quantities, setQuantities] = useState<Record<string, number>>(
@@ -35,7 +39,7 @@ export default function OrderForm({
   const [phoneDisplay, setPhoneDisplay] = useState("");
   const [pin, setPin] = useState("");
   const [fulfillmentType, setFulfillmentType] = useState<"배송" | "픽업">(
-    complexes.length > 0 ? "배송" : "픽업"
+    fulfillmentMode === "pickup_only" ? "픽업" : complexes.length > 0 ? "배송" : "픽업"
   );
   const [paymentMethod, setPaymentMethod] = useState<"계좌이체" | "현장결제">("계좌이체");
   const [complexId, setComplexId] = useState(complexes[0]?.id ?? "");
@@ -46,11 +50,13 @@ export default function OrderForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const total = useMemo(
+  const productTotal = useMemo(
     () =>
       products.reduce((sum, p) => sum + (quantities[p.id] || 0) * p.price, 0),
     [quantities, products]
   );
+  const appliedDeliveryFee = fulfillmentType === "배송" ? deliveryFee : 0;
+  const total = productTotal + appliedDeliveryFee;
 
   function remaining(p: Product) {
     return p.stock_limit - p.stock_reserved;
@@ -98,7 +104,7 @@ export default function OrderForm({
   async function submit() {
     setError(null);
 
-    if (total === 0) {
+    if (productTotal === 0) {
       setError("상품을 1개 이상 선택해주세요.");
       return;
     }
@@ -234,27 +240,31 @@ export default function OrderForm({
 
       <p className="text-[12px] text-neutral-500 mb-1.5">수령 방법</p>
       <div className="flex gap-2 mb-3">
-        <button
-          type="button"
-          disabled={complexes.length === 0}
-          onClick={() => setFulfillmentType("배송")}
-          className={`flex-1 border rounded-lg py-2 text-[13px] disabled:opacity-30 ${
-            fulfillmentType === "배송" ? "bg-neutral-900 text-white" : ""
-          }`}
-        >
-          문앞배송
-        </button>
-        <button
-          type="button"
-          onClick={() => setFulfillmentType("픽업")}
-          className={`flex-1 border rounded-lg py-2 text-[13px] ${
-            fulfillmentType === "픽업" ? "bg-neutral-900 text-white" : ""
-          }`}
-        >
-          현장픽업
-        </button>
+        {fulfillmentMode !== "pickup_only" && (
+          <button
+            type="button"
+            disabled={complexes.length === 0}
+            onClick={() => setFulfillmentType("배송")}
+            className={`flex-1 border rounded-lg py-2 text-[13px] disabled:opacity-30 ${
+              fulfillmentType === "배송" ? "bg-neutral-900 text-white" : ""
+            }`}
+          >
+            문앞배송{deliveryFee > 0 ? ` (+${formatWon(deliveryFee)})` : ""}
+          </button>
+        )}
+        {fulfillmentMode !== "delivery_only" && (
+          <button
+            type="button"
+            onClick={() => setFulfillmentType("픽업")}
+            className={`flex-1 border rounded-lg py-2 text-[13px] ${
+              fulfillmentType === "픽업" ? "bg-neutral-900 text-white" : ""
+            }`}
+          >
+            현장픽업
+          </button>
+        )}
       </div>
-      {complexes.length === 0 && (
+      {fulfillmentMode === "hybrid" && complexes.length === 0 && (
         <p className="text-[11px] text-neutral-400 mb-3">
           이 공구는 배송 가능한 지역이 등록되지 않아 현장픽업만 가능합니다.
         </p>
@@ -368,9 +378,17 @@ export default function OrderForm({
         </span>
       </label>
 
-      <div className="flex items-baseline justify-between py-2.5 border-t mb-3">
-        <span className="text-[13px] text-neutral-500">총 결제금액</span>
-        <span className="text-[18px] font-medium">{formatWon(total)}</span>
+      <div className="flex flex-col gap-1 py-2.5 border-t mb-3">
+        {appliedDeliveryFee > 0 && (
+          <div className="flex items-baseline justify-between text-[12px] text-neutral-500">
+            <span>배송비</span>
+            <span>{formatWon(appliedDeliveryFee)}</span>
+          </div>
+        )}
+        <div className="flex items-baseline justify-between">
+          <span className="text-[13px] text-neutral-500">총 결제금액</span>
+          <span className="text-[18px] font-medium">{formatWon(total)}</span>
+        </div>
       </div>
 
       {error && <p className="text-[13px] text-red-600 mb-3">{error}</p>}

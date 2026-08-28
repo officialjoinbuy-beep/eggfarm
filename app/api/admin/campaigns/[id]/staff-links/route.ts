@@ -84,7 +84,9 @@ export async function POST(
     return NextResponse.json({ error: "링크 생성에 실패했습니다." }, { status: 500 });
   }
 
-  const link = rows?.[0];
+  const link = rows?.[0]
+    ? { id: rows[0].link_id, token: rows[0].link_token, expires_at: rows[0].link_expires_at }
+    : null;
   if (!link) {
     return NextResponse.json({ error: "링크 생성에 실패했습니다." }, { status: 500 });
   }

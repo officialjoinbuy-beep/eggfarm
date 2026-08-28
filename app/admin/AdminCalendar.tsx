@@ -12,6 +12,14 @@ type CampaignInfo = {
   closed_at: string | null;
   is_closed: boolean;
   created_at: string;
+  fulfillment_mode?: "pickup_only" | "delivery_only" | "hybrid";
+  stale_pickup_count?: number;
+};
+
+const MODE_EMOJI: Record<string, string> = {
+  pickup_only: "🏢",
+  delivery_only: "🚚",
+  hybrid: "🏢🚚",
 };
 
 type DayInfo = {
@@ -211,7 +219,15 @@ export default function AdminCalendar({
                   className="text-left flex items-center gap-2 min-w-0 flex-1"
                 >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor[item.status]}`} />
-                  <span className="text-[13px] truncate">{item.campaign.title}</span>
+                  <span className="text-[13px] truncate">
+                    {item.campaign.fulfillment_mode ? MODE_EMOJI[item.campaign.fulfillment_mode] + " " : ""}
+                    {item.campaign.title}
+                    {!!item.campaign.stale_pickup_count && (
+                      <span className="ml-1 text-[10px] text-amber-600">
+                        미수령 {item.campaign.stale_pickup_count}건
+                      </span>
+                    )}
+                  </span>
                 </button>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                   {item.status === "completed" && onRegenerate && (

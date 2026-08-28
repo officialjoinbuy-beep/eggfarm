@@ -13,6 +13,14 @@ type Campaign = {
   closed_at: string | null;
   start_at?: string | null;
   order_count: number;
+  fulfillment_mode?: "pickup_only" | "delivery_only" | "hybrid";
+  stale_pickup_count?: number;
+};
+
+const MODE_EMOJI: Record<string, string> = {
+  pickup_only: "🏢",
+  delivery_only: "🚚",
+  hybrid: "🏢🚚",
 };
 
 function formatDeadline(iso: string | null) {
@@ -74,6 +82,8 @@ export default function CampaignListClient() {
       account_number: string;
       account_holder: string;
       inquiry_url: string | null;
+      fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
+      delivery_fee: number;
     };
     const complexNames: string[] = (data.complexes || []).map((x: { name: string }) => x.name);
     const products = (data.products || []).map(
@@ -92,6 +102,8 @@ export default function CampaignListClient() {
       accountHolder: c.account_holder,
       inquiryUrl: c.inquiry_url || "",
       complexes: complexNames,
+      fulfillmentMode: c.fulfillment_mode || "hybrid",
+      deliveryFee: c.delivery_fee || 0,
       products,
     });
     setShowForm(true);
@@ -162,7 +174,15 @@ export default function CampaignListClient() {
                     className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between"
                   >
                     <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
-                      <p className="text-[13px] font-medium truncate">{c.title}</p>
+                      <p className="text-[13px] font-medium truncate">
+                        {c.fulfillment_mode ? MODE_EMOJI[c.fulfillment_mode] + " " : ""}
+                        {c.title}
+                        {!!c.stale_pickup_count && (
+                          <span className="ml-1 text-[10px] text-amber-600 font-normal">
+                            미수령 {c.stale_pickup_count}건
+                          </span>
+                        )}
+                      </p>
                       <p className="text-[11px] text-neutral-500 mt-0.5">
                         주문 {c.order_count}건
                         {c.start_at && ` · ${formatDeadline(c.start_at)} 시작 예정`}
@@ -188,7 +208,15 @@ export default function CampaignListClient() {
                 className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between"
               >
                 <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
-                  <p className="text-[13px] font-medium truncate">{c.title}</p>
+                  <p className="text-[13px] font-medium truncate">
+                        {c.fulfillment_mode ? MODE_EMOJI[c.fulfillment_mode] + " " : ""}
+                        {c.title}
+                        {!!c.stale_pickup_count && (
+                          <span className="ml-1 text-[10px] text-amber-600 font-normal">
+                            미수령 {c.stale_pickup_count}건
+                          </span>
+                        )}
+                      </p>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
                     주문 {c.order_count}건
                     {c.close_deadline && ` · ${formatDeadline(c.close_deadline)} 마감`}
@@ -211,7 +239,15 @@ export default function CampaignListClient() {
                     className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between opacity-80"
                   >
                     <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
-                      <p className="text-[13px] font-medium truncate">{c.title}</p>
+                      <p className="text-[13px] font-medium truncate">
+                        {c.fulfillment_mode ? MODE_EMOJI[c.fulfillment_mode] + " " : ""}
+                        {c.title}
+                        {!!c.stale_pickup_count && (
+                          <span className="ml-1 text-[10px] text-amber-600 font-normal">
+                            미수령 {c.stale_pickup_count}건
+                          </span>
+                        )}
+                      </p>
                       <p className="text-[11px] text-neutral-500 mt-0.5">
                         주문 {c.order_count}건
                         {c.closed_at && ` · ${formatDeadline(c.closed_at)} 마감됨`}
