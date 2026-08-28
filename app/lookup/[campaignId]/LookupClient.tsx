@@ -51,14 +51,9 @@ function PaymentPendingBanner({ order }: { order: OrderResult }) {
 
   return (
     <div className="bg-red-50 rounded-lg p-3 mb-3">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-[13px] text-red-600 font-medium">입금이 확인되지 않았습니다</p>
-        {withinNudge && (
-          <span className="text-[12px] text-red-600 font-medium">
-            {remainingMin}분 {remainingSec}초 남음
-          </span>
-        )}
-      </div>
+      <p className="text-[13px] text-red-600 font-medium mb-2">
+        입금이 확인되지 않았습니다{withinNudge && ` (${remainingMin}분 ${remainingSec}초 남음)`}
+      </p>
       {!withinNudge && (
         <p className="text-[12px] text-red-600 mb-2">입금이 지연되고 있어요. 서둘러 입금해주세요.</p>
       )}
@@ -263,6 +258,17 @@ export default function LookupClient({
                 <span>총 결제금액</span>
                 <span>{formatWon(o.total_amount)}</span>
               </div>
+              <p
+                className={`text-[11px] text-right mt-1 ${
+                  o.payment_status === "입금확인완료" ? "text-green-600" : "text-amber-600"
+                }`}
+              >
+                {o.payment_status === "입금확인완료"
+                  ? "결제완료"
+                  : o.payment_method === "현장결제"
+                  ? "현장에서 결제 예정"
+                  : "입금 확인 중"}
+              </p>
             </div>
 
             {o.fulfillment_type === "픽업" && o.pickup_status === "수령대기" && (

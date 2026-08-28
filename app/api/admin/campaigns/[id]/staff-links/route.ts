@@ -17,7 +17,7 @@ export async function GET(
 
   const { data: links } = await supabase
     .from("delivery_staff_links")
-    .select("id, token, complex_ids, fee_per_order, expires_at, revoked, created_at")
+    .select("id, token, complex_ids, fee_per_order, expires_at, revoked, created_at, staff_id")
     .eq("campaign_id", id)
     .order("created_at", { ascending: false });
 
@@ -36,9 +36,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { complexIds, feePerOrder } = (await req.json()) as {
+  const { complexIds, feePerOrder, staffId } = (await req.json()) as {
     complexIds: string[];
     feePerOrder: number;
+    staffId: string;
   };
 
   const supabase = await createClient();
@@ -51,6 +52,9 @@ export async function POST(
 
   if (!complexIds || complexIds.length === 0) {
     return NextResponse.json({ error: "담당할 단지를 1개 이상 선택해주세요." }, { status: 400 });
+  }
+  if (!staffId) {
+    return NextResponse.json({ error: "배송담당자를 선택하거나 등록해주세요." }, { status: 400 });
   }
 
   const { data: campaign } = await supabase
@@ -69,6 +73,7 @@ export async function POST(
       token,
       complex_ids: complexIds,
       fee_per_order: feePerOrder || 0,
+      staff_id: staffId,
       expires_at: expiresAt.toISOString(),
     })
     .select("id, token, expires_at")

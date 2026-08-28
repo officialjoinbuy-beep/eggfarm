@@ -22,16 +22,18 @@ export async function POST(
 
   const supabase = createAdminClient();
 
-  // 이 담당자가 담당하는 단지의 주문인지 검증
   const { data: order } = await supabase
     .from("orders")
-    .select("id, complex_name")
+    .select("id, delivery_status, complex_name")
     .eq("id", orderId)
     .eq("campaign_id", link.campaign_id)
     .single();
 
   if (!order || !allowedNames.includes(order.complex_name || "")) {
     return NextResponse.json({ error: "처리 권한이 없는 주문입니다." }, { status: 403 });
+  }
+  if (order.delivery_status !== "배송완료") {
+    return NextResponse.json({ error: "배송완료 상태인 주문만 사진을 재등록할 수 있습니다." }, { status: 400 });
   }
 
   const path = `${orderId}/${Date.now()}.jpg`;
@@ -45,23 +47,6 @@ export async function POST(
     return NextResponse.json({ error: "사진 업로드에 실패했습니다." }, { status: 500 });
   }
 
-  const { error } = await supabase.rpc("set_delivery_status_safe", {
-    p_order_id: orderId,
-    p_from: "배송중",
-    p_to: "배송완료",
-  });
-  if (error) {
-    return NextResponse.json({ error: "상태 업데이트에 실패했습니다." }, { status: 500 });
-  }
-
-  await supabase
-    .from("orders")
-    .update({
-      delivery_photo_url: path,
-      completed_by_staff_id: link.staff_id ?? null,
-      staff_fee_amount: link.fee_per_order ?? 0,
-    })
-    .eq("id", orderId);
-
+  await supabase.from("orders").update({ delivery_photo_url: path }).eq("id", orderId);
   return NextResponse.json({ ok: true });
 }

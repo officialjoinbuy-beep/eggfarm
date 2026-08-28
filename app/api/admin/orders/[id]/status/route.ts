@@ -13,7 +13,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { action } = await req.json();
+  const { action, signature } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -79,11 +79,17 @@ export async function PATCH(
       break;
     }
     case "pickup_complete": {
+      if (!signature) {
+        return NextResponse.json({ error: "수령 서명이 필요합니다." }, { status: 400 });
+      }
       const { error } = await supabase.rpc("set_pickup_status", {
         p_order_id: id,
         p_to: "수령완료",
       });
       rpcError = error;
+      if (!error) {
+        await supabase.from("orders").update({ pickup_signature: signature }).eq("id", id);
+      }
       break;
     }
     case "pickup_noshow": {

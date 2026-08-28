@@ -36,6 +36,17 @@ export default function StaffPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [photoTarget, setPhotoTarget] = useState<Order | null>(null);
+  const [photoReplaceTarget, setPhotoReplaceTarget] = useState<Order | null>(null);
+
+  async function revert(orderId: string) {
+    if (!window.confirm("이전 단계로 되돌릴까요?")) return;
+    await fetch(`/api/staff/${token}/revert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId }),
+    });
+    load();
+  }
 
   async function load() {
     const res = await fetch(`/api/staff/${token}/orders`);
@@ -167,11 +178,27 @@ export default function StaffPage() {
               </p>
             </div>
             {tab === "shipping" && (
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => revert(o.id)}
+                  className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded"
+                >
+                  ↩되돌리기
+                </button>
+                <button
+                  onClick={() => setPhotoTarget(o)}
+                  className="text-[12px] px-2.5 py-1.5 border rounded"
+                >
+                  배송완료 처리
+                </button>
+              </div>
+            )}
+            {tab === "done" && (
               <button
-                onClick={() => setPhotoTarget(o)}
-                className="text-[12px] px-2.5 py-1.5 border rounded flex-shrink-0"
+                onClick={() => setPhotoReplaceTarget(o)}
+                className="text-[11px] px-2 py-1.5 border rounded flex-shrink-0"
               >
-                배송완료 처리
+                사진 재등록
               </button>
             )}
           </div>
@@ -182,9 +209,26 @@ export default function StaffPage() {
         <StaffPhotoModal
           token={token}
           order={photoTarget}
+          endpoint={`/api/staff/${token}/complete`}
+          title="배송완료 처리"
           onCancel={() => setPhotoTarget(null)}
           onDone={() => {
             setPhotoTarget(null);
+            load();
+          }}
+        />
+      )}
+
+      {photoReplaceTarget && (
+        <StaffPhotoModal
+          token={token}
+          order={photoReplaceTarget}
+          endpoint={`/api/staff/${token}/photo-replace`}
+          title="배송사진 재등록"
+          skipConfirm
+          onCancel={() => setPhotoReplaceTarget(null)}
+          onDone={() => {
+            setPhotoReplaceTarget(null);
             load();
           }}
         />
@@ -196,11 +240,17 @@ export default function StaffPage() {
 function StaffPhotoModal({
   token,
   order,
+  endpoint,
+  title,
+  skipConfirm,
   onCancel,
   onDone,
 }: {
   token: string;
   order: Order;
+  endpoint: string;
+  title: string;
+  skipConfirm?: boolean;
   onCancel: () => void;
   onDone: () => void;
 }) {
@@ -215,17 +265,19 @@ function StaffPhotoModal({
 
   async function submit() {
     if (!file) return;
-    const proceed = window.confirm(
-      `${order.nickname}님(${formatPhone(order.phone)}) / ${order.address}\n배송완료 처리할까요?`
-    );
-    if (!proceed) return;
+    if (!skipConfirm) {
+      const proceed = window.confirm(
+        `${order.nickname}님(${formatPhone(order.phone)}) / ${order.address}\n${title}할까요?`
+      );
+      if (!proceed) return;
+    }
 
     setUploading(true);
     const watermarked = await watermarkImage(file);
     const formData = new FormData();
     formData.append("orderId", order.id);
     formData.append("photo", watermarked, "delivery.jpg");
-    const res = await fetch(`/api/staff/${token}/complete`, {
+    const res = await fetch(endpoint, {
       method: "POST",
       body: formData,
     });
@@ -240,7 +292,7 @@ function StaffPhotoModal({
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-5 z-50">
       <div className="bg-white rounded-2xl border p-5 w-full max-w-sm shadow-xl">
-        <p className="text-[15px] font-medium mb-1">배송완료 처리</p>
+        <p className="text-[15px] font-medium mb-1">{title}</p>
         <p className="text-[13px] text-neutral-500 mb-4">
           {order.nickname} · {order.address}
         </p>

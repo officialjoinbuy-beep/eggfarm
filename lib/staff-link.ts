@@ -4,7 +4,7 @@ export async function validateStaffLink(token: string) {
   const supabase = createAdminClient();
   const { data: link } = await supabase
     .from("delivery_staff_links")
-    .select("id, campaign_id, complex_ids, fee_per_order, expires_at, revoked")
+    .select("id, campaign_id, complex_ids, fee_per_order, expires_at, revoked, staff_id")
     .eq("token", token)
     .single();
 

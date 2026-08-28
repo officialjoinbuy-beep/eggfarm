@@ -10,6 +10,7 @@ type Product = {
   price: number;
   stock_limit: number;
   stock_reserved: number;
+  max_per_person: number | null;
   image_url?: string | null;
 };
 
@@ -55,9 +56,15 @@ export default function OrderForm({
     return p.stock_limit - p.stock_reserved;
   }
 
+  function maxAllowed(p: Product) {
+    const stockLeft = remaining(p);
+    if (p.max_per_person == null) return stockLeft;
+    return Math.min(stockLeft, p.max_per_person);
+  }
+
   function changeQty(p: Product, delta: number) {
     setQuantities((prev) => {
-      const next = Math.max(0, Math.min(remaining(p), (prev[p.id] || 0) + delta));
+      const next = Math.max(0, Math.min(maxAllowed(p), (prev[p.id] || 0) + delta));
       return { ...prev, [p.id]: next };
     });
   }
@@ -194,6 +201,11 @@ export default function OrderForm({
               >
                 {soldOut ? "재고 0개" : left <= 2 ? `재고 ${left}개 (마감임박)` : `재고 ${left}개`}
               </p>
+              {p.max_per_person != null && (
+                <p className="text-[10px] text-neutral-400 mb-2 -mt-1.5">
+                  1인 최대 {p.max_per_person}개
+                </p>
+              )}
               <div className="flex items-center justify-between gap-1">
                 <button
                   type="button"
@@ -268,7 +280,7 @@ export default function OrderForm({
                 paymentMethod === "현장결제" ? "bg-neutral-900 text-white" : ""
               }`}
             >
-              현장결제(현금)
+              현장결제
             </button>
           </div>
         </div>

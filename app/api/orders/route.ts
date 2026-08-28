@@ -57,6 +57,24 @@ export async function POST(req: NextRequest) {
 
   const supabase = createAdminClient();
 
+  // 인당 최대구매수량 서버측 검증 (클라이언트 조작 방지)
+  const { data: productLimits } = await supabase
+    .from("products")
+    .select("id, name, max_per_person")
+    .in(
+      "id",
+      validItems.map((i) => i.productId)
+    );
+  for (const item of validItems) {
+    const p = productLimits?.find((x) => x.id === item.productId);
+    if (p?.max_per_person != null && item.quantity > p.max_per_person) {
+      return NextResponse.json(
+        { error: `"${p.name}"은(는) 1인당 최대 ${p.max_per_person}개까지 구매 가능합니다.` },
+        { status: 400 }
+      );
+    }
+  }
+
   const { data: campaign, error: campaignErr } = await supabase
     .from("campaigns")
     .select("owner_id, payment_timeout_minutes, is_closed, start_at")

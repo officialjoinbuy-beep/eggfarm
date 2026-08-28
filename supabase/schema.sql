@@ -800,3 +800,112 @@ begin
   -- campaigns 삭제 시 자동으로 함께 삭제됨
 end;
 $$;
+
+-- ============================================================
+-- v8 확장: 상품별 구매상한, 수령서명, 배송담당자(이름/연락처 암호화+정산), UI 정리
+-- ============================================================
+
+-- 상품별 1인 구매 상한 (null = 제한 없음)
+alter table public.products
+  add column if not exists max_per_person int;
+
+-- 픽업 수령완료 시 구매자 서명(이미지, base64 data URL로 저장 - 배송사진과 동일하게 15일 후 폐기)
+alter table public.orders
+  add column if not exists pickup_signature text;
+
+-- campaigns에서 배송방식/건당배송비 필드 제거 (단지별 배송담당자 링크 유무로 자동 판단하는 방식으로 대체)
+alter table public.campaigns
+  drop column if exists delivery_mode,
+  drop column if exists delivery_fee_per_order;
+
+-- ------------------------------------------------------------
+-- 배송담당자(사람) - 이름/연락처는 암호화하여 저장, 정산 목적으로 별도 보유주기 관리
+-- ------------------------------------------------------------
+create table public.delivery_staff (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  name_enc text not null, -- AES-GCM 암호화된 이름 (base64: iv+tag+ciphertext)
+  phone_enc text not null, -- AES-GCM 암호화된 연락처
+  retention_expires_at timestamptz not null, -- 매년 12/31 자정, 무응답시 자동 1년 연장
+  created_at timestamptz not null default now()
+);
+alter table public.delivery_staff enable row level security;
+create policy "owner_select_staff" on public.delivery_staff
+  for select using (auth.uid() = owner_id);
+create policy "owner_insert_staff" on public.delivery_staff
+  for insert with check (auth.uid() = owner_id);
+create policy "owner_update_staff" on public.delivery_staff
+  for update using (auth.uid() = owner_id);
+create policy "owner_delete_staff" on public.delivery_staff
+  for delete using (auth.uid() = owner_id);
+
+-- 배송담당자 링크는 이제 특정 담당자(사람)에 연결됨
+alter table public.delivery_staff_links
+  add column if not exists staff_id uuid references public.delivery_staff(id) on delete set null;
+
+-- 정산 추적: 어떤 담당자가 처리했는지 + 그때 적용된 건당단가 스냅샷
+-- (링크의 fee_per_order가 나중에 바뀌어도 과거 정산액은 그대로 유지됨)
+alter table public.orders
+  add column if not exists completed_by_staff_id uuid references public.delivery_staff(id) on delete set null,
+  add column if not exists staff_fee_amount int not null default 0;
+
+-- 매년 1/1에 실행: 진행자가 응답 안 한(만료된) 배송담당자 정보는 자동으로 1년 연장
+create or replace function public.auto_renew_staff_retention()
+returns void
+language plpgsql
+as $$
+begin
+  update public.delivery_staff
+  set retention_expires_at = make_timestamptz(extract(year from retention_expires_at)::int + 1, 12, 31, 23, 59, 59, 'Asia/Seoul')
+  where retention_expires_at < now();
+end;
+$$;
+
+-- 픽업완료 시각 (배송의 delivery_completed_at에 대응 - 15일 보유기간 기산점)
+alter table public.orders
+  add column if not exists pickup_completed_at timestamptz;
+
+create or replace function public.set_pickup_status(p_order_id uuid, p_to text)
+returns void
+language plpgsql
+as $$
+declare
+  v_from text;
+begin
+  select pickup_status into v_from from public.orders where id = p_order_id;
+
+  update public.orders
+  set pickup_status = p_to,
+      pickup_completed_at = case when p_to = '수령완료' then now() else pickup_completed_at end
+  where id = p_order_id and pickup_status = '수령대기';
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, coalesce(v_from, ''), p_to);
+end;
+$$;
+
+-- 개인정보 자동폐기 확장: 픽업 주문(서명 포함)도 포함
+create or replace function public.purge_expired_personal_data()
+returns void
+language plpgsql
+as $$
+begin
+  update public.orders o
+  set nickname = '[삭제됨]',
+      phone = '[삭제됨]',
+      address = '[삭제됨]',
+      pin_hash = '[삭제됨]',
+      complex_name = null,
+      dong = null,
+      unit_no = null,
+      entry_password = null,
+      pickup_signature = null
+  from public.campaigns c
+  where o.campaign_id = c.id
+    and (
+      (o.delivery_status = '배송완료' and o.delivery_completed_at < now() - (c.data_retention_days || ' days')::interval)
+      or (o.pickup_status = '수령완료' and o.pickup_completed_at < now() - (c.data_retention_days || ' days')::interval)
+    )
+    and o.nickname <> '[삭제됨]';
+end;
+$$;

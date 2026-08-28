@@ -7,12 +7,14 @@ import { watermarkImage } from "@/lib/watermark";
 import EditCampaignModal from "@/components/EditCampaignModal";
 import StaffLinkManager from "@/components/StaffLinkManager";
 import QrScanModal from "@/components/QrScanModal";
+import SignaturePad from "@/components/SignaturePad";
 
 type Order = {
   id: string;
   nickname: string;
   phone: string;
   address: string;
+  complex_name: string | null;
   total_amount: number;
   payment_status: "입금확인대기" | "입금확인완료" | "주문취소(미입금)";
   delivery_status: "배송준비" | "배송중" | "배송완료";
@@ -24,13 +26,7 @@ type Order = {
 };
 
 type Product = { id: string; name: string; stock_limit: number; stock_reserved: number };
-type Campaign = {
-  id: string;
-  title: string;
-  is_closed: boolean;
-  delivery_mode: "직접배송" | "위임배송";
-  delivery_fee_per_order: number;
-};
+type Campaign = { id: string; title: string; is_closed: boolean };
 
 const TABS = [
   { key: "wait", label: "입금확인대기" },
@@ -49,6 +45,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [delegatedComplexNames, setDelegatedComplexNames] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<TabKey>("wait");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -60,6 +57,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [qrScanOpen, setQrScanOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [photoTarget, setPhotoTarget] = useState<Order | null>(null);
+  const [photoReplaceTarget, setPhotoReplaceTarget] = useState<Order | null>(null);
   const [pickupConfirmTarget, setPickupConfirmTarget] = useState<{
     order: Order;
     action: "pickup_complete" | "pickup_noshow";
@@ -67,18 +65,44 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [loading, setLoading] = useState(true);
 
   async function load() {
-    const res = await fetch(`/api/admin/campaigns/${campaignId}/orders`);
-    if (res.ok) {
-      const data = await res.json();
+    const [ordersRes, staffRes] = await Promise.all([
+      fetch(`/api/admin/campaigns/${campaignId}/orders`),
+      fetch(`/api/admin/campaigns/${campaignId}/staff-links`),
+    ]);
+    if (ordersRes.ok) {
+      const data = await ordersRes.json();
       setCampaign(data.campaign);
       setProducts(data.products ?? []);
       setOrders(data.orders ?? []);
+    }
+    if (staffRes.ok) {
+      const data = await staffRes.json();
+      // 위임 판단: 무효화 안됐고 아직 만료 안 된 링크가 담당하는 단지들
+      const complexesRes = await fetch(`/api/admin/campaigns/${campaignId}`);
+      let complexIdToName: Record<string, string> = {};
+      if (complexesRes.ok) {
+        const cd = await complexesRes.json();
+        complexIdToName = Object.fromEntries(
+          (cd.complexes ?? []).map((c: { id: string; name: string }) => [c.id, c.name])
+        );
+      }
+      const now = Date.now();
+      const names = new Set<string>();
+      for (const link of data.links ?? []) {
+        if (link.revoked) continue;
+        if (new Date(link.expires_at).getTime() < now) continue;
+        for (const cid of link.complex_ids as string[]) {
+          if (complexIdToName[cid]) names.add(complexIdToName[cid]);
+        }
+      }
+      setDelegatedComplexNames(names);
     }
     setLoading(false);
   }
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   // 15초마다 자동 새로고침. 단, 각종 팝업이 열려있는 동안에는
@@ -91,6 +115,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     staffOpen ||
     qrScanOpen ||
     !!photoTarget ||
+    !!photoReplaceTarget ||
     !!pickupConfirmTarget;
 
   useEffect(() => {
@@ -99,12 +124,15 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       load();
     }, 15000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId, anyModalOpen]);
 
+  // 검색은 정확일치(닉네임/연락처)만 인정한다.
   function matchesSearch(o: Order) {
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    return o.nickname.toLowerCase().includes(q) || o.phone.includes(q);
+    const q = search.trim();
+    if (!q) return true;
+    const qDigits = q.replace(/[^0-9]/g, "");
+    return o.nickname === q || (qDigits.length > 0 && o.phone === qDigits);
   }
 
   const byTab: Record<TabKey, Order[]> = {
@@ -139,6 +167,19 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       .filter(matchesSearch),
     cancel: orders.filter((o) => o.payment_status === "주문취소(미입금)").filter(matchesSearch),
   };
+
+  // 검색어를 입력하면, 결과가 있는 첫 번째 탭으로 자동 이동해서 "없어 보이는" 혼동을 막는다.
+  useEffect(() => {
+    if (!search.trim()) return;
+    if (byTab[tab].length > 0) return;
+    const firstMatch = TABS.find((t) => byTab[t.key].length > 0);
+    if (firstMatch) setTab(firstMatch.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  function isDelegated(o: Order) {
+    return o.fulfillment_type === "배송" && !!o.complex_name && delegatedComplexNames.has(o.complex_name);
+  }
 
   async function confirmPayment(orderId: string) {
     await fetch(`/api/admin/orders/${orderId}/status`, {
@@ -232,13 +273,13 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     router.push("/admin");
   }
 
-  async function doPickupAction() {
+  async function doPickupAction(signature?: string | null) {
     if (!pickupConfirmTarget) return;
     const { order, action } = pickupConfirmTarget;
     const res = await fetch(`/api/admin/orders/${order.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, signature }),
     });
     if (!res.ok) {
       const data = await res.json();
@@ -274,13 +315,13 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   if (!campaign) return <p className="text-center text-neutral-400 py-20 text-sm">공구를 찾을 수 없습니다.</p>;
 
   const orderUrl = typeof window !== "undefined" ? `${window.location.origin}/order/${campaignId}` : "";
-  const lookupUrl = typeof window !== "undefined" ? `${window.location.origin}/lookup/${campaignId}` : "";
-  const delegated = campaign.delivery_mode === "위임배송";
+  const currentRevenue = orders
+    .filter((o) => o.payment_status === "입금확인완료")
+    .reduce((s, o) => s + o.total_amount, 0);
 
   return (
     <div>
       <LinkCopyBox label="구매자 주문접수 링크" url={orderUrl} />
-      <LinkCopyBox label="구매자 주문조회 링크" url={lookupUrl} />
 
       <div className="flex gap-2 mb-3">
         {!campaign.is_closed && (
@@ -292,19 +333,17 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           </button>
         )}
         <button
-          onClick={() => setStaffOpen(true)}
-          className="flex-1 border rounded-lg py-2 text-[13px] text-neutral-600"
+          onClick={() => campaign.is_closed && setStaffOpen(true)}
+          disabled={!campaign.is_closed}
+          className="flex-1 border rounded-lg py-2 text-[13px] text-neutral-600 disabled:opacity-40"
         >
-          배송담당자 관리
+          위임배송 등록
         </button>
       </div>
-
-      {delegated && (
-        <div className="bg-amber-50 rounded-lg p-2.5 mb-3">
-          <p className="text-[12px] text-amber-700">
-            위임배송 모드입니다 — 배송준비→배송중, 배송중→배송완료는 배송담당자 화면에서만 처리됩니다.
-          </p>
-        </div>
+      {!campaign.is_closed && (
+        <p className="text-[11px] text-neutral-400 mb-3 -mt-1.5">
+          위임배송 등록은 공구 마감 후에 가능합니다
+        </p>
       )}
 
       <div className="grid grid-cols-2 gap-3 mb-3">
@@ -313,29 +352,39 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           <p className="text-[24px] font-medium">{orders.length}건</p>
         </div>
         <div className="bg-neutral-50 border rounded-xl p-4">
-          <p className="text-[13px] text-neutral-500 mb-1">상품 종류</p>
-          <p className="text-[24px] font-medium">{products.length}개</p>
+          <p className="text-[13px] text-neutral-500 mb-1">현재 매출</p>
+          <p className="text-[24px] font-medium">{formatWon(currentRevenue)}</p>
         </div>
       </div>
 
       <div className="bg-neutral-50 border rounded-xl p-4 mb-4">
         <p className="text-[13px] text-neutral-500 mb-2">상품별 재고</p>
         <div className="flex flex-col gap-1.5">
-          {products.map((p) => (
-            <div key={p.id} className="flex items-center justify-between">
-              <span className="text-[13px]">{p.name}</span>
-              <span className="text-[14px] font-medium">
-                {p.stock_reserved}/{p.stock_limit}
-              </span>
-            </div>
-          ))}
+          {products.map((p) => {
+            const soldOut = p.stock_reserved >= p.stock_limit;
+            return (
+              <div key={p.id} className="flex items-center justify-between">
+                <span className="text-[13px]">{p.name}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[14px] font-medium">
+                    {p.stock_reserved}/{p.stock_limit}
+                  </span>
+                  {soldOut && (
+                    <span className="text-[11px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded">
+                      품절
+                    </span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       <div className="flex gap-2 mb-3">
         <input
           className="flex-1 min-w-0 border rounded-lg px-3 py-2 text-[13px]"
-          placeholder="닉네임 또는 연락처로 검색"
+          placeholder="닉네임 또는 연락처 정확히 입력"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -383,14 +432,21 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         </div>
       )}
 
-      {tab === "ready" && !delegated && byTab.ready.length > 0 && (
+      {tab === "ready" && byTab.ready.some((o) => !isDelegated(o)) && (
         <div className="flex items-center justify-between mb-2">
           <label className="text-[12px] text-neutral-500 flex items-center gap-1.5">
             <input
               type="checkbox"
-              checked={selected.size === byTab.ready.length}
+              checked={
+                selected.size > 0 &&
+                selected.size === byTab.ready.filter((o) => !isDelegated(o)).length
+              }
               onChange={(e) =>
-                setSelected(e.target.checked ? new Set(byTab.ready.map((o) => o.id)) : new Set())
+                setSelected(
+                  e.target.checked
+                    ? new Set(byTab.ready.filter((o) => !isDelegated(o)).map((o) => o.id))
+                    : new Set()
+                )
               }
             />
             전체선택
@@ -409,83 +465,97 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         {byTab[tab].length === 0 && (
           <p className="text-center text-neutral-400 text-[13px] py-8">주문이 없습니다.</p>
         )}
-        {byTab[tab].map((o, idx) => (
-          <div
-            key={o.id}
-            className={`flex items-center gap-2.5 p-3 ${
-              idx < byTab[tab].length - 1 ? "border-b" : ""
-            }`}
-          >
-            {(tab === "wait" || (tab === "ready" && !delegated)) && (
-              <input
-                type="checkbox"
-                checked={selected.has(o.id)}
-                onChange={() => toggleSelect(o.id)}
-              />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-medium truncate">
-                {o.nickname}{" "}
-                <span className="text-[11px] text-neutral-400 font-normal">
-                  {o.fulfillment_type === "픽업" ? "· 현장픽업" : "· 문앞배송"}
-                  {o.fulfillment_type === "픽업" && o.payment_method === "현장결제" && " · 현장결제"}
-                </span>
-              </p>
-              <p className="text-[12px] text-neutral-500 break-words">
-                {o.order_items.map((i) => `${i.product_name_snapshot} · ${i.quantity}개`).join(", ")}
-              </p>
+        {byTab[tab].map((o, idx) => {
+          const delegated = isDelegated(o);
+          return (
+            <div
+              key={o.id}
+              className={`flex items-center gap-2.5 p-3 ${
+                idx < byTab[tab].length - 1 ? "border-b" : ""
+              }`}
+            >
+              {((tab === "wait") || (tab === "ready" && !delegated)) && (
+                <input
+                  type="checkbox"
+                  checked={selected.has(o.id)}
+                  onChange={() => toggleSelect(o.id)}
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium truncate">
+                  {o.nickname}{" "}
+                  <span className="text-[11px] text-neutral-400 font-normal">
+                    {o.fulfillment_type === "픽업" ? "· 현장픽업" : "· 문앞배송"}
+                    {o.fulfillment_type === "픽업" && o.payment_method === "현장결제" && " · 현장결제"}
+                  </span>
+                </p>
+                <p className="text-[12px] text-neutral-500 break-words">
+                  {o.order_items.map((i) => `${i.product_name_snapshot} · ${i.quantity}개`).join(", ")}
+                </p>
+                {tab === "wait" && (
+                  <span className="text-[11px] text-amber-600">
+                    {(() => {
+                      const m = minutesLeft(o.payment_deadline);
+                      return m === null ? "무기한 대기" : `${m}분 남음`;
+                    })()}
+                  </span>
+                )}
+                {(tab === "ready" || tab === "shipping") && delegated && (
+                  <span className="text-[11px] text-amber-600">위임배송 처리 중</span>
+                )}
+              </div>
+
               {tab === "wait" && (
-                <span className="text-[11px] text-amber-600">
-                  {(() => {
-                    const m = minutesLeft(o.payment_deadline);
-                    return m === null ? "무기한 대기" : `${m}분 남음`;
-                  })()}
-                </span>
+                <button
+                  onClick={() => confirmPayment(o.id)}
+                  className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded flex-shrink-0"
+                >
+                  입금확인
+                </button>
+              )}
+              {tab !== "wait" && tab !== "pickupWait" && tab !== "pickupDone" && tab !== "noshow" && !delegated && (
+                <button
+                  onClick={() => setRevertTarget(o)}
+                  className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded flex-shrink-0"
+                >
+                  ↩ 되돌리기
+                </button>
+              )}
+              {tab === "shipping" && !delegated && (
+                <button
+                  onClick={() => setPhotoTarget(o)}
+                  className="text-[12px] px-2.5 py-1.5 border rounded flex-shrink-0"
+                >
+                  배송완료 처리
+                </button>
+              )}
+              {tab === "done" && !delegated && (
+                <button
+                  onClick={() => setPhotoReplaceTarget(o)}
+                  className="text-[11px] px-2 py-1.5 border rounded flex-shrink-0"
+                >
+                  사진 재등록
+                </button>
+              )}
+              {tab === "pickupWait" && (
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => setPickupConfirmTarget({ order: o, action: "pickup_noshow" })}
+                    className="text-[11px] px-2 py-1.5 border border-red-200 text-red-500 rounded"
+                  >
+                    노쇼
+                  </button>
+                  <button
+                    onClick={() => setPickupConfirmTarget({ order: o, action: "pickup_complete" })}
+                    className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded"
+                  >
+                    수령완료
+                  </button>
+                </div>
               )}
             </div>
-
-            {tab === "wait" && (
-              <button
-                onClick={() => confirmPayment(o.id)}
-                className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded flex-shrink-0"
-              >
-                입금확인
-              </button>
-            )}
-            {tab !== "wait" && tab !== "pickupWait" && tab !== "pickupDone" && tab !== "noshow" && (
-              <button
-                onClick={() => setRevertTarget(o)}
-                className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded flex-shrink-0"
-              >
-                ↩ 되돌리기
-              </button>
-            )}
-            {tab === "shipping" && !delegated && (
-              <button
-                onClick={() => setPhotoTarget(o)}
-                className="text-[12px] px-2.5 py-1.5 border rounded flex-shrink-0"
-              >
-                배송완료 처리
-              </button>
-            )}
-            {tab === "pickupWait" && (
-              <div className="flex gap-1.5 flex-shrink-0">
-                <button
-                  onClick={() => setPickupConfirmTarget({ order: o, action: "pickup_noshow" })}
-                  className="text-[11px] px-2 py-1.5 border border-red-200 text-red-500 rounded"
-                >
-                  노쇼
-                </button>
-                <button
-                  onClick={() => setPickupConfirmTarget({ order: o, action: "pickup_complete" })}
-                  className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded"
-                >
-                  수령완료
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button
@@ -563,7 +633,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       )}
 
       {staffOpen && (
-        <StaffLinkManager campaignId={campaignId} onClose={() => setStaffOpen(false)} />
+        <StaffLinkManager campaignId={campaignId} onClose={() => setStaffOpen(false)} onChanged={load} />
       )}
 
       {qrScanOpen && (
@@ -573,6 +643,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       {photoTarget && (
         <PhotoUploadModal
           order={photoTarget}
+          endpoint={`/api/admin/orders/${photoTarget.id}/photo`}
+          title="배송완료 처리"
+          confirmLabel="완료 처리"
           onCancel={() => setPhotoTarget(null)}
           onDone={() => {
             setPhotoTarget(null);
@@ -581,43 +654,81 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         />
       )}
 
+      {photoReplaceTarget && (
+        <PhotoUploadModal
+          order={photoReplaceTarget}
+          endpoint={`/api/admin/orders/${photoReplaceTarget.id}/photo-replace`}
+          title="배송사진 재등록"
+          confirmLabel="재등록"
+          skipConfirmDialog
+          onCancel={() => setPhotoReplaceTarget(null)}
+          onDone={() => {
+            setPhotoReplaceTarget(null);
+            load();
+          }}
+        />
+      )}
+
       {pickupConfirmTarget && (
-        <Overlay>
-          <p className="text-[15px] font-medium mb-2">
-            {pickupConfirmTarget.action === "pickup_complete" ? "수령완료 처리할까요?" : "노쇼로 처리할까요?"}
-          </p>
-          <p className="text-[13px] text-neutral-500 mb-1">
-            {pickupConfirmTarget.order.nickname}님 / {formatPhone(pickupConfirmTarget.order.phone)}
-          </p>
-          <p className="text-[13px] text-neutral-500 mb-4">
-            {pickupConfirmTarget.order.order_items
-              .map((i) => `${i.product_name_snapshot} ${i.quantity}개`)
-              .join(", ")}
-          </p>
-          {pickupConfirmTarget.action === "pickup_noshow" && (
-            <p className="text-[12px] text-red-500 mb-3">
-              같은 연락처로 2회 노쇼 시 이후 현장픽업 주문이 제한됩니다.
-            </p>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPickupConfirmTarget(null)}
-              className="flex-1 border rounded-lg py-2 text-sm"
-            >
-              취소
-            </button>
-            <button
-              onClick={doPickupAction}
-              className={`flex-1 rounded-lg py-2 text-sm text-white ${
-                pickupConfirmTarget.action === "pickup_noshow" ? "bg-red-600" : "bg-neutral-900"
-              }`}
-            >
-              확인
-            </button>
-          </div>
-        </Overlay>
+        <PickupConfirmModal
+          target={pickupConfirmTarget}
+          onCancel={() => setPickupConfirmTarget(null)}
+          onConfirm={doPickupAction}
+        />
       )}
     </div>
+  );
+}
+
+function PickupConfirmModal({
+  target,
+  onCancel,
+  onConfirm,
+}: {
+  target: { order: Order; action: "pickup_complete" | "pickup_noshow" };
+  onCancel: () => void;
+  onConfirm: (signature?: string | null) => void;
+}) {
+  const [signature, setSignature] = useState<string | null>(null);
+  const needsSignature = target.action === "pickup_complete";
+
+  return (
+    <Overlay>
+      <p className="text-[15px] font-medium mb-2">
+        {target.action === "pickup_complete" ? "수령완료 처리할까요?" : "노쇼로 처리할까요?"}
+      </p>
+      <p className="text-[13px] text-neutral-500 mb-1">
+        {target.order.nickname}님 / {formatPhone(target.order.phone)}
+      </p>
+      <p className="text-[13px] text-neutral-500 mb-4">
+        {target.order.order_items.map((i) => `${i.product_name_snapshot} ${i.quantity}개`).join(", ")}
+      </p>
+      {target.action === "pickup_noshow" && (
+        <p className="text-[12px] text-red-500 mb-3">
+          같은 연락처로 2회 노쇼 시 이후 현장픽업 주문이 제한됩니다.
+        </p>
+      )}
+      {needsSignature && (
+        <div className="mb-3">
+          <p className="text-[12px] text-neutral-500 mb-1.5">구매자 서명</p>
+          <SignaturePad onChange={setSignature} />
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 border rounded-lg py-2 text-sm">
+          취소
+        </button>
+        <button
+          onClick={() => onConfirm(signature)}
+          disabled={needsSignature && !signature}
+          className={`flex-1 rounded-lg py-2 text-sm text-white disabled:opacity-40 ${
+            target.action === "pickup_noshow" ? "bg-red-600" : "bg-neutral-900"
+          }`}
+        >
+          확인
+        </button>
+      </div>
+    </Overlay>
   );
 }
 
@@ -706,10 +817,18 @@ function CloseModal({
 
 function PhotoUploadModal({
   order,
+  endpoint,
+  title,
+  confirmLabel,
+  skipConfirmDialog,
   onCancel,
   onDone,
 }: {
   order: Order;
+  endpoint: string;
+  title: string;
+  confirmLabel: string;
+  skipConfirmDialog?: boolean;
   onCancel: () => void;
   onDone: () => void;
 }) {
@@ -724,16 +843,18 @@ function PhotoUploadModal({
 
   async function submit() {
     if (!file) return;
-    const proceed = window.confirm(
-      `${order.nickname}님(${formatPhone(order.phone)}) / ${order.address}\n배송완료 처리할까요?`
-    );
-    if (!proceed) return;
+    if (!skipConfirmDialog) {
+      const proceed = window.confirm(
+        `${order.nickname}님(${formatPhone(order.phone)}) / ${order.address}\n${title.replace("처리", "처리할까요")}?`
+      );
+      if (!proceed) return;
+    }
 
     setUploading(true);
     const watermarked = await watermarkImage(file);
     const formData = new FormData();
     formData.append("photo", watermarked, "delivery.jpg");
-    const res = await fetch(`/api/admin/orders/${order.id}/photo`, {
+    const res = await fetch(endpoint, {
       method: "POST",
       body: formData,
     });
@@ -747,7 +868,7 @@ function PhotoUploadModal({
 
   return (
     <Overlay>
-      <p className="text-[15px] font-medium mb-1">배송완료 처리</p>
+      <p className="text-[15px] font-medium mb-1">{title}</p>
       <p className="text-[13px] text-neutral-500 mb-4">
         {order.nickname} · {order.order_items.map((i) => `${i.product_name_snapshot} ${i.quantity}개`).join(", ")}
       </p>
@@ -787,7 +908,7 @@ function PhotoUploadModal({
           disabled={!file || uploading}
           className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50"
         >
-          {uploading ? "업로드 중..." : "완료 처리"}
+          {uploading ? "업로드 중..." : confirmLabel}
         </button>
       </div>
     </Overlay>

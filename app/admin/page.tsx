@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import CampaignListClient from "./CampaignListClient";
+import AdminHomeClient from "./AdminHomeClient";
 
 export default async function AdminHomePage() {
   const supabase = await createClient();
@@ -14,7 +14,7 @@ export default async function AdminHomePage() {
 
   return (
     <main className="max-w-md mx-auto p-5">
-      <CampaignListClient />
+      <AdminHomeClient />
     </main>
   );
 }

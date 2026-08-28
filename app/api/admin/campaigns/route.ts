@@ -12,8 +12,6 @@ export async function POST(req: NextRequest) {
     inquiryUrl,
     startAt,
     closeDeadline,
-    deliveryMode,
-    deliveryFeePerOrder,
     complexes,
     products,
   } = body as {
@@ -24,10 +22,14 @@ export async function POST(req: NextRequest) {
     inquiryUrl?: string;
     startAt?: string; // ISO datetime string, optional
     closeDeadline?: string; // ISO datetime string, optional
-    deliveryMode?: "직접배송" | "위임배송";
-    deliveryFeePerOrder?: number;
     complexes: string[];
-    products: { name: string; price: number; stockLimit: number; imageUrl?: string }[];
+    products: {
+      name: string;
+      price: number;
+      stockLimit: number;
+      maxPerPerson?: number | null;
+      imageUrl?: string;
+    }[];
   };
 
   const supabase = await createClient();
@@ -70,8 +72,6 @@ export async function POST(req: NextRequest) {
       inquiry_url: inquiryUrl || null,
       start_at: startAt || null,
       close_deadline: closeDeadline || null,
-      delivery_mode: deliveryMode === "위임배송" ? "위임배송" : "직접배송",
-      delivery_fee_per_order: deliveryFeePerOrder || 0,
     })
     .select("id")
     .single();
@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
       name: p.name,
       price: p.price,
       stock_limit: p.stockLimit,
+      max_per_person: p.maxPerPerson || null,
       image_url: p.imageUrl || null,
       display_order: idx,
     }))

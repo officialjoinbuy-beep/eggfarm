@@ -12,8 +12,6 @@ type CampaignDetail = {
   inquiry_url: string | null;
   close_deadline: string | null;
   start_at: string | null;
-  delivery_mode: "직접배송" | "위임배송";
-  delivery_fee_per_order: number;
 };
 
 type ProductDetail = {
@@ -22,6 +20,7 @@ type ProductDetail = {
   price: number;
   stock_limit: number;
   stock_reserved: number;
+  max_per_person: number | null;
 };
 
 export default function EditCampaignModal({
@@ -44,10 +43,15 @@ export default function EditCampaignModal({
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
   const [complexes, setComplexes] = useState<string[]>([""]);
-  const [deliveryMode, setDeliveryMode] = useState<"직접배송" | "위임배송">("직접배송");
-  const [deliveryFee, setDeliveryFee] = useState("");
   const [products, setProducts] = useState<
-    { id: string; name: string; price: string; stockLimit: string; stockReserved: number }[]
+    {
+      id: string;
+      name: string;
+      price: string;
+      stockLimit: string;
+      maxPerPerson: string;
+      stockReserved: number;
+    }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -63,8 +67,6 @@ export default function EditCampaignModal({
         setAccountNumberDisplay(formatAccountNumber(c.account_number));
         setAccountHolder(c.account_holder);
         setInquiryUrl(c.inquiry_url || "");
-        setDeliveryMode(c.delivery_mode || "직접배송");
-        setDeliveryFee(c.delivery_fee_per_order ? formatNumberWithCommas(String(c.delivery_fee_per_order)) : "");
         if (c.start_at) {
           const sd = new Date(c.start_at);
           setStartDate(sd.toISOString().slice(0, 10));
@@ -84,6 +86,7 @@ export default function EditCampaignModal({
             name: x.name,
             price: formatNumberWithCommas(String(x.price)),
             stockLimit: String(x.stock_limit),
+            maxPerPerson: x.max_per_person != null ? String(x.max_per_person) : "",
             stockReserved: x.stock_reserved,
           }))
         );
@@ -102,7 +105,11 @@ export default function EditCampaignModal({
   function removeComplex(idx: number) {
     setComplexes((prev) => prev.filter((_, i) => i !== idx));
   }
-  function updateProduct(idx: number, field: "name" | "price" | "stockLimit", value: string) {
+  function updateProduct(
+    idx: number,
+    field: "name" | "price" | "stockLimit" | "maxPerPerson",
+    value: string
+  ) {
     setProducts((prev) => prev.map((p, i) => (i === idx ? { ...p, [field]: value } : p)));
   }
 
@@ -156,14 +163,13 @@ export default function EditCampaignModal({
         inquiryUrl,
         startAt,
         closeDeadline,
-        deliveryMode,
-        deliveryFeePerOrder: Number(deliveryFee.replace(/[^0-9]/g, "")) || 0,
         complexes: validComplexes,
         products: products.map((p) => ({
           id: p.id,
           name: p.name,
           price: Number(p.price.replace(/[^0-9]/g, "")),
           stockLimit: Number(p.stockLimit),
+          maxPerPerson: p.maxPerPerson ? Number(p.maxPerPerson) : null,
         })),
       }),
     });
@@ -224,37 +230,6 @@ export default function EditCampaignModal({
               />
             </div>
 
-            <p className="text-[12px] text-neutral-500 mb-1.5">배송 방식</p>
-            <div className="flex gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => setDeliveryMode("직접배송")}
-                className={`flex-1 border rounded-lg py-2 text-[13px] ${
-                  deliveryMode === "직접배송" ? "bg-neutral-900 text-white" : ""
-                }`}
-              >
-                직접배송
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeliveryMode("위임배송")}
-                className={`flex-1 border rounded-lg py-2 text-[13px] ${
-                  deliveryMode === "위임배송" ? "bg-neutral-900 text-white" : ""
-                }`}
-              >
-                위임배송
-              </button>
-            </div>
-            {deliveryMode === "위임배송" && (
-              <input
-                className="w-full border rounded px-3 py-2 text-sm mb-3"
-                placeholder="건당 배송비 (원)"
-                inputMode="numeric"
-                value={deliveryFee}
-                onChange={(e) => setDeliveryFee(formatNumberWithCommas(e.target.value))}
-              />
-            )}
-
             <p className="text-[12px] text-neutral-500 mb-1.5">배송 가능한 아파트 단지</p>
             <div className="flex flex-col gap-2 mb-3">
               {complexes.map((c, idx) => (
@@ -293,7 +268,7 @@ export default function EditCampaignModal({
                     value={p.name}
                     onChange={(e) => updateProduct(idx, "name", e.target.value)}
                   />
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 mb-1.5">
                     <input
                       className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
                       placeholder="가격"
@@ -311,6 +286,15 @@ export default function EditCampaignModal({
                       }
                     />
                   </div>
+                  <input
+                    className="w-full min-w-0 border rounded px-2 py-1.5 text-sm"
+                    placeholder="인당 최대구매(선택)"
+                    inputMode="numeric"
+                    value={p.maxPerPerson}
+                    onChange={(e) =>
+                      updateProduct(idx, "maxPerPerson", e.target.value.replace(/[^0-9]/g, ""))
+                    }
+                  />
                   <p className="text-[11px] text-neutral-400 mt-1">
                     현재 예약(주문)된 수량: {p.stockReserved}개 — 이보다 적게 줄일 수 없음
                   </p>

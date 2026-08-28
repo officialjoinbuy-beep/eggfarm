@@ -19,7 +19,7 @@ export async function GET(
   const { data: campaign } = await supabase
     .from("campaigns")
     .select(
-      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed, delivery_mode, delivery_fee_per_order"
+      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed"
     )
     .eq("id", id)
     .single();
@@ -36,14 +36,14 @@ export async function GET(
 
   const { data: products } = await supabase
     .from("products")
-    .select("id, name, price, stock_limit, stock_reserved")
+    .select("id, name, price, stock_limit, stock_reserved, max_per_person")
     .eq("campaign_id", id)
     .order("display_order");
 
   return NextResponse.json({ campaign, complexes: complexes ?? [], products: products ?? [] });
 }
 
-// 진행중인 공구도 정보 수정 가능 (제목/계좌/마감일시/문의링크/배송방식/단지/상품).
+// 진행중인 공구도 정보 수정 가능 (제목/계좌/마감일시/문의링크/단지/상품).
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -58,8 +58,6 @@ export async function PATCH(
     inquiryUrl,
     startAt,
     closeDeadline,
-    deliveryMode,
-    deliveryFeePerOrder,
     complexes,
     products,
   } = body as {
@@ -70,10 +68,14 @@ export async function PATCH(
     inquiryUrl?: string;
     startAt?: string | null;
     closeDeadline?: string | null;
-    deliveryMode?: "직접배송" | "위임배송";
-    deliveryFeePerOrder?: number;
     complexes: string[];
-    products?: { id: string; name: string; price: number; stockLimit: number }[];
+    products?: {
+      id: string;
+      name: string;
+      price: number;
+      stockLimit: number;
+      maxPerPerson?: number | null;
+    }[];
   };
 
   const supabase = await createClient();
@@ -128,8 +130,6 @@ export async function PATCH(
       inquiry_url: inquiryUrl || null,
       start_at: startAt || null,
       close_deadline: closeDeadline || null,
-      delivery_mode: deliveryMode === "위임배송" ? "위임배송" : "직접배송",
-      delivery_fee_per_order: deliveryFeePerOrder || 0,
     })
     .eq("id", id);
 
@@ -156,7 +156,12 @@ export async function PATCH(
     for (const p of products) {
       await supabase
         .from("products")
-        .update({ name: p.name, price: p.price, stock_limit: p.stockLimit })
+        .update({
+          name: p.name,
+          price: p.price,
+          stock_limit: p.stockLimit,
+          max_per_person: p.maxPerPerson ?? null,
+        })
         .eq("id", p.id);
     }
   }
