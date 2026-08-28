@@ -32,7 +32,13 @@ function startOfDay(d: Date) {
   return c;
 }
 
-export default function AdminCalendar() {
+export default function AdminCalendar({
+  onRegenerate,
+  regenerating,
+}: {
+  onRegenerate?: (campaignId: string) => void;
+  regenerating?: boolean;
+}) {
   const router = useRouter();
   const [cursor, setCursor] = useState(() => new Date());
   const [monthRevenue, setMonthRevenue] = useState(0);
@@ -196,19 +202,32 @@ export default function AdminCalendar() {
           </p>
           <div className="flex flex-col gap-2">
             {selectedDay.items.map((item, i) => (
-              <button
+              <div
                 key={i}
-                onClick={() => router.push(`/admin/${item.campaign.id}`)}
-                className="text-left flex items-center justify-between border rounded-lg p-2.5"
+                className="flex items-center justify-between border rounded-lg p-2.5"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <button
+                  onClick={() => router.push(`/admin/${item.campaign.id}`)}
+                  className="text-left flex items-center gap-2 min-w-0 flex-1"
+                >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor[item.status]}`} />
                   <span className="text-[13px] truncate">{item.campaign.title}</span>
+                </button>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                  {item.status === "completed" && onRegenerate && (
+                    <button
+                      onClick={() => onRegenerate(item.campaign.id)}
+                      disabled={regenerating}
+                      className="text-[11px] text-neutral-500 border rounded px-2 py-1 disabled:opacity-50"
+                    >
+                      재생성
+                    </button>
+                  )}
+                  <span className="text-[11px] text-neutral-400">
+                    {item.status === "upcoming" ? "예정" : item.status === "active" ? "진행중" : "완료"}
+                  </span>
                 </div>
-                <span className="text-[11px] text-neutral-400 flex-shrink-0 ml-2">
-                  {item.status === "upcoming" ? "예정" : item.status === "active" ? "진행중" : "완료"}
-                </span>
-              </button>
+              </div>
             ))}
           </div>
         </div>

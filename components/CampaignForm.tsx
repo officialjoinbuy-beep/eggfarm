@@ -21,20 +21,48 @@ const emptyProduct: ProductInput = {
   uploading: false,
 };
 
+// 완료된 공구를 "재생성"할 때 넘겨주는 값 - 시작/마감일시는 항상 새로 입력받아야
+// 하므로 여기 포함하지 않는다.
+export type CampaignPrefill = {
+  title: string;
+  bankName: string;
+  accountNumber: string; // 표시용(하이픈 포함 가능)
+  accountHolder: string;
+  inquiryUrl: string;
+  complexes: string[];
+  products: {
+    name: string;
+    price: string;
+    stockLimit: string;
+    maxPerPerson: string;
+    imageUrl: string;
+  }[];
+};
+
 export default function CampaignForm({
   onCreated,
   onCancel,
+  prefill,
 }: {
   onCreated: (campaignId: string) => void;
   onCancel: () => void;
+  prefill?: CampaignPrefill;
 }) {
-  const [title, setTitle] = useState("");
-  const [products, setProducts] = useState<ProductInput[]>([{ ...emptyProduct }]);
-  const [complexes, setComplexes] = useState<string[]>([""]);
-  const [bankName, setBankName] = useState("");
-  const [accountNumberDisplay, setAccountNumberDisplay] = useState("");
-  const [accountHolder, setAccountHolder] = useState("");
-  const [inquiryUrl, setInquiryUrl] = useState("");
+  const [title, setTitle] = useState(prefill?.title ?? "");
+  const [products, setProducts] = useState<ProductInput[]>(
+    prefill && prefill.products.length > 0
+      ? prefill.products.map((p) => ({ ...p, uploading: false }))
+      : [{ ...emptyProduct }]
+  );
+  const [complexes, setComplexes] = useState<string[]>(
+    prefill && prefill.complexes.length > 0 ? prefill.complexes : [""]
+  );
+  const [bankName, setBankName] = useState(prefill?.bankName ?? "");
+  const [accountNumberDisplay, setAccountNumberDisplay] = useState(
+    prefill ? formatAccountNumber(prefill.accountNumber) : ""
+  );
+  const [accountHolder, setAccountHolder] = useState(prefill?.accountHolder ?? "");
+  const [inquiryUrl, setInquiryUrl] = useState(prefill?.inquiryUrl ?? "");
   const [startDate, setStartDate] = useState(() => nextHour().date);
   const [startTime, setStartTime] = useState(() => nextHour().time);
   const [closeDate, setCloseDate] = useState("");
@@ -144,7 +172,14 @@ export default function CampaignForm({
 
   return (
     <div className="border rounded-lg p-3.5 bg-white">
-      <p className="text-[13px] font-medium mb-3">새 공구 만들기</p>
+      <p className="text-[13px] font-medium mb-3">
+        {prefill ? "이전 공구 조건으로 새 공구 만들기" : "새 공구 만들기"}
+      </p>
+      {prefill && (
+        <p className="text-[11px] text-neutral-400 -mt-2 mb-3">
+          상품/단지/계좌 정보는 그대로 불러왔습니다. 시작·마감일시는 새로 입력해주세요.
+        </p>
+      )}
 
       <input
         className="w-full border rounded px-3 py-2 text-sm mb-3"

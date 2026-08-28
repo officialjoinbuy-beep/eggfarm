@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { formatWon, formatNumberWithCommas } from "@/lib/format";
+import { useEffect, useMemo, useState } from "react";
+import { formatWon, formatNumberWithCommas, formatPhone } from "@/lib/format";
+import { matchesKoreanName } from "@/lib/korean-search";
 
 type Complex = { id: string; name: string };
 type StaffLink = {
@@ -13,7 +14,7 @@ type StaffLink = {
   revoked: boolean;
   staff_id: string | null;
 };
-type StaffPerson = { id: string; name: string; phone: string };
+type StaffPerson = { id: string; name: string; phone: string; lastFeePerOrder: number | null };
 
 export default function StaffLinkManager({
   campaignId,
@@ -29,6 +30,8 @@ export default function StaffLinkManager({
   const [staffList, setStaffList] = useState<StaffPerson[]>([]);
   const [selectedComplexIds, setSelectedComplexIds] = useState<Set<string>>(new Set());
   const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [staffSearch, setStaffSearch] = useState("");
+  const [staffSearchFocused, setStaffSearchFocused] = useState(false);
   const [newStaffName, setNewStaffName] = useState("");
   const [newStaffPhone, setNewStaffPhone] = useState("");
   const [fee, setFee] = useState("");
@@ -42,7 +45,9 @@ export default function StaffLinkManager({
     const [detailRes, linksRes, staffRes] = await Promise.all([
       fetch(`/api/admin/campaigns/${campaignId}`),
       fetch(`/api/admin/campaigns/${campaignId}/staff-links`),
-      fetch(`/api/admin/staff`),
+      // reveal=1: 담당자 검색(초성/오타)이 실제 이름 기준으로 동작하려면
+      // 마스킹되지 않은 이름이 필요하다. 이 화면은 진행자 본인만 보는 영역.
+      fetch(`/api/admin/staff?reveal=1`),
     ]);
     if (detailRes.ok) {
       const data = await detailRes.json();
@@ -64,12 +69,48 @@ export default function StaffLinkManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
+  // 이미 살아있는(무효화 안됐고 만료 안된) 링크가 담당 중인 단지는 새 링크
+  // 생성 대상에서 제외한다 - 같은 단지에 링크가 중복 생성되는 걸 화면에서부터 막음.
+  const occupiedComplexIds = useMemo(() => {
+    const now = Date.now();
+    const ids = new Set<string>();
+    for (const l of links) {
+      if (l.revoked) continue;
+      if (new Date(l.expires_at).getTime() < now) continue;
+      for (const cid of l.complex_ids) ids.add(cid);
+    }
+    return ids;
+  }, [links]);
+
+  const staffMatches = useMemo(() => {
+    const q = staffSearch.trim();
+    if (!q) return staffList;
+    return staffList.filter((s) => matchesKoreanName(s.name, q));
+  }, [staffList, staffSearch]);
+
+  const selectedStaff = staffList.find((s) => s.id === selectedStaffId) || null;
+
   function toggleComplex(id: string) {
+    if (occupiedComplexIds.has(id)) return;
     setSelectedComplexIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  function pickStaff(s: StaffPerson) {
+    setSelectedStaffId(s.id);
+    setStaffSearch(s.name);
+    setStaffSearchFocused(false);
+    if (s.lastFeePerOrder != null) {
+      setFee(formatNumberWithCommas(String(s.lastFeePerOrder)));
+    }
+  }
+
+  function clearStaffSelection() {
+    setSelectedStaffId("");
+    setStaffSearch("");
   }
 
   async function createLink() {
@@ -116,6 +157,7 @@ export default function StaffLinkManager({
     }
     setSelectedComplexIds(new Set());
     setSelectedStaffId("");
+    setStaffSearch("");
     setNewStaffName("");
     setNewStaffPhone("");
     setFee("");
@@ -165,38 +207,79 @@ export default function StaffLinkManager({
               <>
                 <p className="text-[12px] text-neutral-500 mb-1.5">담당할 단지 선택</p>
                 <div className="flex flex-col gap-1.5 mb-3">
-                  {complexes.map((c) => (
-                    <label key={c.id} className="flex items-center gap-2 text-[13px]">
-                      <input
-                        type="checkbox"
-                        checked={selectedComplexIds.has(c.id)}
-                        onChange={() => toggleComplex(c.id)}
-                      />
-                      {c.name}
-                    </label>
-                  ))}
+                  {complexes.map((c) => {
+                    const occupied = occupiedComplexIds.has(c.id);
+                    return (
+                      <label
+                        key={c.id}
+                        className={`flex items-center gap-2 text-[13px] ${
+                          occupied ? "text-neutral-300" : ""
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedComplexIds.has(c.id)}
+                          onChange={() => toggleComplex(c.id)}
+                          disabled={occupied}
+                        />
+                        {c.name}
+                        {occupied && (
+                          <span className="text-[11px] text-neutral-300">(이미 위임됨)</span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
 
                 <p className="text-[12px] text-neutral-500 mb-1.5">배송담당자</p>
-                {staffList.length > 0 && (
-                  <select
-                    className="w-full border rounded px-3 py-2 text-sm bg-white mb-2"
-                    value={selectedStaffId}
-                    onChange={(e) => setSelectedStaffId(e.target.value)}
-                  >
-                    <option value="">+ 새 담당자 등록</option>
-                    {staffList.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.phone})
-                      </option>
-                    ))}
-                  </select>
+                {selectedStaff ? (
+                  <div className="flex items-center justify-between border rounded px-3 py-2 text-sm bg-neutral-50 mb-2">
+                    <span>
+                      {selectedStaff.name} ({selectedStaff.phone})
+                    </span>
+                    <button
+                      onClick={clearStaffSelection}
+                      className="text-[11px] text-neutral-400 underline flex-shrink-0 ml-2"
+                    >
+                      변경
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative mb-2">
+                    <input
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      placeholder="담당자 검색 (이름, 초성, 영타 모두 가능)"
+                      value={staffSearch}
+                      onChange={(e) => setStaffSearch(e.target.value)}
+                      onFocus={() => setStaffSearchFocused(true)}
+                      onBlur={() => setTimeout(() => setStaffSearchFocused(false), 150)}
+                    />
+                    {staffSearchFocused && staffList.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 border rounded-lg bg-white shadow-lg max-h-40 overflow-y-auto z-10">
+                        {staffMatches.length === 0 ? (
+                          <p className="text-[12px] text-neutral-400 px-3 py-2">
+                            일치하는 담당자가 없습니다.
+                          </p>
+                        ) : (
+                          staffMatches.map((s) => (
+                            <button
+                              key={s.id}
+                              onMouseDown={() => pickStaff(s)}
+                              className="w-full text-left px-3 py-2 text-[13px] hover:bg-neutral-50"
+                            >
+                              {s.name} <span className="text-neutral-400">({s.phone})</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
                 {!selectedStaffId && (
                   <div className="flex gap-2 mb-3">
                     <input
                       className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                      placeholder="이름"
+                      placeholder="새 담당자 이름"
                       value={newStaffName}
                       onChange={(e) => setNewStaffName(e.target.value)}
                     />
@@ -205,7 +288,8 @@ export default function StaffLinkManager({
                       placeholder="연락처"
                       inputMode="numeric"
                       value={newStaffPhone}
-                      onChange={(e) => setNewStaffPhone(e.target.value)}
+                      onChange={(e) => setNewStaffPhone(formatPhone(e.target.value))}
+                      maxLength={13}
                     />
                   </div>
                 )}

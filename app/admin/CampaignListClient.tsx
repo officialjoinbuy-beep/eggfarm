@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import CampaignForm from "@/components/CampaignForm";
+import CampaignForm, { CampaignPrefill } from "@/components/CampaignForm";
 import AdminCalendar from "./AdminCalendar";
 
 type Campaign = {
@@ -33,6 +33,8 @@ export default function CampaignListClient() {
   const [closed, setClosed] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [prefill, setPrefill] = useState<CampaignPrefill | undefined>(undefined);
+  const [regenerating, setRegenerating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -53,6 +55,46 @@ export default function CampaignListClient() {
 
   function goTo(id: string) {
     router.push(`/admin/${id}`);
+  }
+
+  // 완료된 공구를 같은 조건(상품/단지/계좌 등)으로 복사해 새 공구 등록 폼을 연다.
+  // 시작/마감일시는 CampaignForm에서 항상 새로 입력받는다.
+  async function regenerateFrom(campaignId: string) {
+    setRegenerating(true);
+    const res = await fetch(`/api/admin/campaigns/${campaignId}`);
+    setRegenerating(false);
+    if (!res.ok) {
+      alert("공구 정보를 불러오지 못했습니다.");
+      return;
+    }
+    const data = await res.json();
+    const c = data.campaign as {
+      title: string;
+      bank_name: string;
+      account_number: string;
+      account_holder: string;
+      inquiry_url: string | null;
+    };
+    const complexNames: string[] = (data.complexes || []).map((x: { name: string }) => x.name);
+    const products = (data.products || []).map(
+      (p: { name: string; price: number; stock_limit: number; max_per_person: number | null; image_url?: string | null }) => ({
+        name: p.name,
+        price: p.price.toLocaleString("ko-KR"),
+        stockLimit: String(p.stock_limit),
+        maxPerPerson: p.max_per_person != null ? String(p.max_per_person) : "",
+        imageUrl: p.image_url || "",
+      })
+    );
+    setPrefill({
+      title: c.title,
+      bankName: c.bank_name,
+      accountNumber: c.account_number,
+      accountHolder: c.account_holder,
+      inquiryUrl: c.inquiry_url || "",
+      complexes: complexNames,
+      products,
+    });
+    setShowForm(true);
   }
 
   async function confirmDelete() {
@@ -78,8 +120,15 @@ export default function CampaignListClient() {
       {showForm ? (
         <div className="mb-5">
           <CampaignForm
-            onCreated={(id) => goTo(id)}
-            onCancel={() => setShowForm(false)}
+            prefill={prefill}
+            onCreated={(id) => {
+              setPrefill(undefined);
+              goTo(id);
+            }}
+            onCancel={() => {
+              setPrefill(undefined);
+              setShowForm(false);
+            }}
           />
         </div>
       ) : (
@@ -91,7 +140,7 @@ export default function CampaignListClient() {
         </button>
       )}
 
-      <AdminCalendar />
+      <AdminCalendar onRegenerate={regenerateFrom} regenerating={regenerating} />
 
       <p className="text-[12px] text-neutral-500 mb-4">
         진행중 공구는 마감일시가 가까운 순, 마감된 공구는 최근 마감순으로 표시됩니다
@@ -169,6 +218,13 @@ export default function CampaignListClient() {
                       </p>
                     </button>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <button
+                        onClick={() => regenerateFrom(c.id)}
+                        disabled={regenerating}
+                        className="text-[11px] text-neutral-500 border rounded px-2 py-1 disabled:opacity-50"
+                      >
+                        재생성
+                      </button>
                       <button
                         onClick={() => setDeleteTarget(c)}
                         className="text-[11px] text-red-500 border border-red-200 rounded px-2 py-1"

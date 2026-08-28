@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import crypto from "crypto";
 
 export async function GET(
   _req: NextRequest,
@@ -63,23 +62,30 @@ export async function POST(
     .eq("id", id)
     .single();
 
-  const token = crypto.randomBytes(24).toString("hex");
   const expiresAt = computeExpiry(campaign?.close_deadline ?? null);
 
-  const { data: link, error } = await supabase
-    .from("delivery_staff_links")
-    .insert({
-      campaign_id: id,
-      token,
-      complex_ids: complexIds,
-      fee_per_order: feePerOrder || 0,
-      staff_id: staffId,
-      expires_at: expiresAt.toISOString(),
-    })
-    .select("id, token, expires_at")
-    .single();
+  // 같은 단지에 이미 살아있는 위임배송 링크가 있으면 원자적으로 막는다
+  // (버튼 두 번 클릭 등 동시요청으로 인한 중복 링크 생성 방지).
+  const { data: rows, error } = await supabase.rpc("create_delivery_staff_link", {
+    p_campaign_id: id,
+    p_complex_ids: complexIds,
+    p_fee_per_order: feePerOrder || 0,
+    p_staff_id: staffId,
+    p_expires_at: expiresAt.toISOString(),
+  });
 
-  if (error || !link) {
+  if (error) {
+    if (error.message?.includes("COMPLEX_ALREADY_DELEGATED")) {
+      return NextResponse.json(
+        { error: "이미 위임 처리된 단지가 포함되어 있습니다. 화면을 새로고침한 뒤 다시 시도해주세요." },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: "링크 생성에 실패했습니다." }, { status: 500 });
+  }
+
+  const link = rows?.[0];
+  if (!link) {
     return NextResponse.json({ error: "링크 생성에 실패했습니다." }, { status: 500 });
   }
 

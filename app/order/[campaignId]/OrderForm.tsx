@@ -323,6 +323,9 @@ export default function OrderForm({
                 </option>
               ))}
             </select>
+            <p className="text-[11px] text-neutral-400 -mt-1">
+              목록에 없는 단지는 배송이 불가합니다. 현장픽업을 이용해주세요.
+            </p>
             <div className="flex gap-2 items-center">
               <input
                 className="w-20 border rounded px-3 py-2 text-sm text-center"

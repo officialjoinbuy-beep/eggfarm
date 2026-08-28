@@ -19,13 +19,20 @@ export async function GET(req: NextRequest) {
 
   const reveal = req.nextUrl.searchParams.get("reveal") === "1";
 
-  const { data: staff } = await supabase
-    .from("delivery_staff")
-    .select("id, name_enc, phone_enc, retention_expires_at, created_at")
-    .eq("owner_id", user.id)
-    .order("created_at", { ascending: false });
+  const { data: staff } = await supabase.rpc("list_staff_with_last_fee", {
+    p_owner_id: user.id,
+  });
 
-  const result = (staff ?? []).map((s) => {
+  const result = (
+    (staff ?? []) as {
+      id: string;
+      name_enc: string;
+      phone_enc: string;
+      retention_expires_at: string;
+      created_at: string;
+      last_fee_per_order: number | null;
+    }[]
+  ).map((s) => {
     const name = decryptStaffField(s.name_enc);
     const phone = decryptStaffField(s.phone_enc);
     return {
@@ -34,6 +41,7 @@ export async function GET(req: NextRequest) {
       phone: reveal ? phone : maskPhone(phone),
       retention_expires_at: s.retention_expires_at,
       created_at: s.created_at,
+      lastFeePerOrder: s.last_fee_per_order ?? null,
     };
   });
 

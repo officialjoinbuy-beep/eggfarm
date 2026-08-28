@@ -51,6 +51,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const [search, setSearch] = useState("");
   const [revertTarget, setRevertTarget] = useState<Order | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [reopenConfirmOpen, setReopenConfirmOpen] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [staffOpen, setStaffOpen] = useState(false);
@@ -110,6 +113,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   const anyModalOpen =
     !!revertTarget ||
     closeConfirmOpen ||
+    reopenConfirmOpen ||
     deleteConfirmOpen ||
     editOpen ||
     staffOpen ||
@@ -256,6 +260,20 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   async function closeCampaign() {
     await fetch(`/api/admin/campaigns/${campaignId}/close`, { method: "POST" });
     setCloseConfirmOpen(false);
+    load();
+  }
+
+  async function reopenCampaign() {
+    setReopenError(null);
+    setReopening(true);
+    const res = await fetch(`/api/admin/campaigns/${campaignId}/close`, { method: "DELETE" });
+    setReopening(false);
+    if (!res.ok) {
+      const data = await res.json();
+      setReopenError(data.error || "마감취소 처리 중 오류가 발생했습니다.");
+      return;
+    }
+    setReopenConfirmOpen(false);
     load();
   }
 
@@ -565,6 +583,22 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       >
         {campaign.is_closed ? "마감됨" : "조기마감"}
       </button>
+      {campaign.is_closed && (
+        <>
+          <button
+            onClick={() => setReopenConfirmOpen(true)}
+            disabled={delegatedComplexNames.size > 0}
+            className="w-full mt-2 border rounded-lg py-2.5 text-sm text-neutral-600 disabled:opacity-40"
+          >
+            마감취소
+          </button>
+          {delegatedComplexNames.size > 0 && (
+            <p className="text-[11px] text-neutral-400 mt-1.5 text-center">
+              위임배송 링크가 살아있어 마감취소할 수 없습니다. 먼저 무효화해주세요.
+            </p>
+          )}
+        </>
+      )}
       <a
         href={`/api/admin/campaigns/${campaignId}/export`}
         className="block w-full mt-2 text-center border rounded-lg py-2.5 text-sm"
@@ -595,6 +629,32 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           onCancel={() => setCloseConfirmOpen(false)}
           onConfirm={closeCampaign}
         />
+      )}
+
+      {reopenConfirmOpen && (
+        <Overlay>
+          <p className="text-[15px] font-medium mb-2">마감을 취소할까요?</p>
+          <p className="text-[13px] text-neutral-500 mb-4">
+            주문접수 링크가 다시 열려 추가 주문을 받을 수 있게 됩니다. 지금까지 쌓인 주문/배송/입금
+            데이터는 전혀 바뀌지 않습니다.
+          </p>
+          {reopenError && <p className="text-[13px] text-red-600 mb-3">{reopenError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setReopenConfirmOpen(false)}
+              className="flex-1 border rounded-lg py-2 text-sm"
+            >
+              취소
+            </button>
+            <button
+              onClick={reopenCampaign}
+              disabled={reopening}
+              className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+            >
+              {reopening ? "처리 중..." : "마감취소"}
+            </button>
+          </div>
+        </Overlay>
       )}
 
       {deleteConfirmOpen && (

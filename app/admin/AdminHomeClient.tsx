@@ -3,9 +3,10 @@
 import { useState } from "react";
 import CampaignListClient from "./CampaignListClient";
 import StaffManagementClient from "./StaffManagementClient";
+import NoshowManagementClient from "./NoshowManagementClient";
 
 export default function AdminHomeClient() {
-  const [tab, setTab] = useState<"campaigns" | "staff">("campaigns");
+  const [tab, setTab] = useState<"campaigns" | "staff" | "noshow">("campaigns");
 
   return (
     <div>
@@ -26,9 +27,19 @@ export default function AdminHomeClient() {
         >
           배송담당자 관리
         </button>
+        <button
+          onClick={() => setTab("noshow")}
+          className={`flex-1 text-[13px] py-2 rounded ${
+            tab === "noshow" ? "bg-white shadow-sm font-medium" : "text-neutral-500"
+          }`}
+        >
+          노쇼 관리
+        </button>
       </div>
 
-      {tab === "campaigns" ? <CampaignListClient /> : <StaffManagementClient />}
+      {tab === "campaigns" && <CampaignListClient />}
+      {tab === "staff" && <StaffManagementClient />}
+      {tab === "noshow" && <NoshowManagementClient />}
     </div>
   );
 }
