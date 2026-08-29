@@ -41,6 +41,7 @@ export default async function OrderPage({
 
   if (campaign.start_at && new Date(campaign.start_at).getTime() > Date.now()) {
     const startText = new Date(campaign.start_at).toLocaleString("ko-KR", {
+      timeZone: "Asia/Seoul",
       month: "numeric",
       day: "numeric",
       hour: "2-digit",

@@ -8,6 +8,7 @@ import EditCampaignModal from "@/components/EditCampaignModal";
 import StaffLinkManager from "@/components/StaffLinkManager";
 import QrScanModal from "@/components/QrScanModal";
 import SignaturePad from "@/components/SignaturePad";
+import Spinner from "@/components/Spinner";
 
 type Order = {
   id: string;
@@ -37,7 +38,62 @@ type Campaign = {
   is_closed: boolean;
   fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
   delivery_fee: number;
+  close_deadline: string | null;
 };
+
+// 마감일시까지 남은 시간을 1초 단위로 갱신해 보여주는 카운트다운 배너.
+function DeadlineCountdown({ closeDeadline, isClosed }: { closeDeadline: string | null; isClosed: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (isClosed || !closeDeadline) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [isClosed, closeDeadline]);
+
+  if (isClosed || !closeDeadline) return null;
+
+  const deadlineMs = new Date(closeDeadline).getTime();
+  const remainingMs = deadlineMs - now;
+  const deadlineText = new Date(closeDeadline).toLocaleString("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (remainingMs <= 0) {
+    return (
+      <div className="bg-red-50 rounded-lg px-3.5 py-2.5 mb-3 text-[13px] text-red-600">
+        ⏰ 마감시간이 지났습니다 ({deadlineText}) — 곧 자동 마감됩니다
+      </div>
+    );
+  }
+
+  const totalMinutes = Math.floor(remainingMs / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const seconds = Math.floor((remainingMs % 60000) / 1000);
+
+  const urgent = remainingMs < 60 * 60 * 1000; // 1시간 미만이면 경고색
+  const remainingText =
+    days > 0
+      ? `${days}일 ${hours}시간 남음`
+      : hours > 0
+      ? `${hours}시간 ${minutes}분 남음`
+      : `${minutes}분 ${seconds}초 남음`;
+
+  return (
+    <div
+      className={`rounded-lg px-3.5 py-2.5 mb-3 text-[13px] ${
+        urgent ? "bg-red-50 text-red-600" : "bg-neutral-50 text-neutral-600"
+      }`}
+    >
+      ⏰ 마감 {deadlineText} · {remainingText}
+    </div>
+  );
+}
 
 const MODE_BADGE: Record<Campaign["fulfillment_mode"], string> = {
   pickup_only: "🏢 픽업전용",
@@ -209,17 +265,20 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   }
 
   async function confirmPayment(orderId: string) {
+    setActionLoading(true);
     await fetch(`/api/admin/orders/${orderId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "confirm_payment" }),
     });
+    setActionLoading(false);
     load();
   }
 
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   async function doCancelOrder() {
     if (!cancelTarget) return;
@@ -265,11 +324,13 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   }
 
   async function bulkConfirmPayment() {
+    setActionLoading(true);
     await fetch("/api/admin/orders/bulk-confirm-payment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds: Array.from(selected) }),
     });
+    setActionLoading(false);
     setSelected(new Set());
     load();
   }
@@ -318,17 +379,21 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   }
 
   async function bulkShip() {
+    setActionLoading(true);
     await fetch("/api/admin/orders/bulk-ship", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds: Array.from(selected) }),
     });
+    setActionLoading(false);
     setSelected(new Set());
     load();
   }
 
   async function closeCampaign() {
+    setActionLoading(true);
     await fetch(`/api/admin/campaigns/${campaignId}/close`, { method: "POST" });
+    setActionLoading(false);
     setCloseConfirmOpen(false);
     load();
   }
@@ -364,11 +429,13 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
   async function doPickupAction(signature?: string | null, extraOrderIds?: string[]) {
     if (!pickupConfirmTarget) return;
     const { order, action } = pickupConfirmTarget;
+    setActionLoading(true);
     const res = await fetch(`/api/admin/orders/${order.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, signature, extraOrderIds }),
     });
+    setActionLoading(false);
     if (!res.ok) {
       const data = await res.json();
       alert(data.error || "처리에 실패했습니다.");
@@ -436,6 +503,8 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           위임배송 등록은 공구 마감 후에 가능합니다
         </p>
       )}
+
+      <DeadlineCountdown closeDeadline={campaign.close_deadline} isClosed={campaign.is_closed} />
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-neutral-50 border rounded-xl p-4">
@@ -514,10 +583,11 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             전체선택
           </label>
           <button
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || actionLoading}
             onClick={bulkConfirmPayment}
-            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40"
+            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40 flex items-center"
           >
+            {actionLoading && <Spinner className="w-3 h-3" />}
             선택건 입금확인{selected.size > 0 ? ` (${selected.size})` : ""}
           </button>
         </div>
@@ -543,10 +613,11 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             전체선택
           </label>
           <button
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || actionLoading}
             onClick={bulkShip}
-            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40"
+            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40 flex items-center"
           >
+            {actionLoading && <Spinner className="w-3 h-3" />}
             선택건 배송중 처리{selected.size > 0 ? ` (${selected.size})` : ""}
           </button>
         </div>
@@ -620,7 +691,8 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
               {tab === "wait" && (
                 <button
                   onClick={() => confirmPayment(o.id)}
-                  className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded flex-shrink-0"
+                  disabled={actionLoading}
+                  className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded flex-shrink-0 disabled:opacity-50"
                 >
                   입금확인
                 </button>
@@ -723,8 +795,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             <button
               onClick={doCancelOrder}
               disabled={cancelling}
-              className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+              className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50 flex items-center justify-center"
             >
+              {cancelling && <Spinner />}
               {cancelling ? "처리 중..." : "주문취소"}
             </button>
           </div>
@@ -783,6 +856,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           orders={orders}
           onCancel={() => setCloseConfirmOpen(false)}
           onConfirm={closeCampaign}
+          loading={actionLoading}
         />
       )}
 
@@ -804,8 +878,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             <button
               onClick={reopenCampaign}
               disabled={reopening}
-              className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+              className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50 flex items-center justify-center"
             >
+              {reopening && <Spinner />}
               {reopening ? "처리 중..." : "마감취소"}
             </button>
           </div>
@@ -828,8 +903,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
             <button
               onClick={deleteCampaign}
               disabled={deleting}
-              className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+              className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50 flex items-center justify-center"
             >
+              {deleting && <Spinner />}
               {deleting ? "삭제 중..." : "삭제"}
             </button>
           </div>
@@ -899,6 +975,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           }
           onCancel={() => setPickupConfirmTarget(null)}
           onConfirm={doPickupAction}
+          loading={actionLoading}
         />
       )}
     </div>
@@ -910,11 +987,13 @@ function PickupConfirmModal({
   linkedOrders,
   onCancel,
   onConfirm,
+  loading,
 }: {
   target: { order: Order; action: "pickup_complete" | "pickup_noshow" };
   linkedOrders?: Order[];
   onCancel: () => void;
   onConfirm: (signature?: string | null, extraOrderIds?: string[]) => void;
+  loading?: boolean;
 }) {
   const [signature, setSignature] = useState<string | null>(null);
   const [selectedExtras, setSelectedExtras] = useState<Set<string>>(
@@ -975,11 +1054,12 @@ function PickupConfirmModal({
         </button>
         <button
           onClick={() => onConfirm(signature, Array.from(selectedExtras))}
-          disabled={needsSignature && !signature}
-          className={`flex-1 rounded-lg py-2 text-sm text-white disabled:opacity-40 ${
+          disabled={(needsSignature && !signature) || loading}
+          className={`flex-1 rounded-lg py-2 text-sm text-white disabled:opacity-40 flex items-center justify-center ${
             target.action === "pickup_noshow" ? "bg-red-600" : "bg-neutral-900"
           }`}
         >
+          {loading && <Spinner />}
           확인
         </button>
       </div>
@@ -1026,10 +1106,12 @@ function CloseModal({
   orders,
   onCancel,
   onConfirm,
+  loading,
 }: {
   orders: Order[];
   onCancel: () => void;
   onConfirm: () => void;
+  loading?: boolean;
 }) {
   const waitCount = orders.filter((o) => o.payment_status === "입금확인대기").length;
   const validOrders = orders.filter((o) => o.payment_status !== "주문취소(미입금)");
@@ -1061,8 +1143,10 @@ function CloseModal({
         </button>
         <button
           onClick={onConfirm}
-          className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm"
+          disabled={loading}
+          className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm disabled:opacity-50 flex items-center justify-center"
         >
+          {loading && <Spinner />}
           마감하기
         </button>
       </div>
@@ -1195,8 +1279,9 @@ function PhotoUploadModal({
         <button
           onClick={submit}
           disabled={!file || uploading}
-          className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50"
+          className="flex-1 bg-neutral-900 text-white rounded-lg py-2 text-sm disabled:opacity-50 flex items-center justify-center"
         >
+          {uploading && <Spinner />}
           {uploading ? "업로드 중..." : confirmLabel}
         </button>
       </div>

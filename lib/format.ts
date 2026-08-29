@@ -66,3 +66,20 @@ export function nextHour(): { date: string; time: string } {
   const time = `${pad(now.getHours())}:00`;
   return { date, time };
 }
+
+// "14:30" -> "오후 2:30"
+export function formatTimeKorean(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h < 12 ? "오전" : "오후";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${period} ${h12}:${String(m).padStart(2, "0")}`;
+}
+
+// 예상 수령시간대 입력값(from/to, 둘 다 선택)으로 안내 문구를 조합.
+// 예: ("14:00", "18:00") -> "오후 2:00~오후 6:00", 하나만 있으면 "오후 2:00부터"
+export function formatPickupTimeNote(from: string, to: string): string {
+  if (from && to) return `${formatTimeKorean(from)}~${formatTimeKorean(to)}`;
+  if (from) return `${formatTimeKorean(from)}부터`;
+  if (to) return `${formatTimeKorean(to)}까지`;
+  return "";
+}

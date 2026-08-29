@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatPhone, formatWon, normalizePhone } from "@/lib/format";
+import Spinner from "@/components/Spinner";
 
 type Product = {
   id: string;
@@ -124,6 +125,12 @@ export default function OrderForm({
       if (!dong.trim() || !unitNo.trim()) {
         setError("동, 호수를 입력해주세요.");
         return;
+      }
+      if (unitNo.trim().length >= 5) {
+        const ok = window.confirm(
+          `${dong.trim()}동 ${unitNo.trim()}호가 맞으신가요?\n호수를 다시 한번 확인해주세요.`
+        );
+        if (!ok) return;
       }
     }
     if (!/^[0-9]{4}$/.test(pin)) {
@@ -376,6 +383,11 @@ export default function OrderForm({
               />
               <span className="text-sm">호</span>
             </div>
+            {(dong.trim() || unitNo.trim()) && (
+              <p className="text-[12px] text-neutral-500 -mt-1">
+                입력하신 주소: {dong.trim() || "OO"}동 {unitNo.trim() || "OO"}호
+              </p>
+            )}
             <input
               className="w-full border rounded px-3 py-2 text-sm"
               placeholder="공동출입 비밀번호 (선택, 예: #1003#0953)"
@@ -389,7 +401,7 @@ export default function OrderForm({
       <label className="flex items-start gap-2 text-[12px] text-neutral-600 mb-4">
         <input
           type="checkbox"
-          className="mt-0.5"
+          className="mt-0.5 w-4 h-4 flex-shrink-0"
           checked={agreed}
           onChange={(e) => setAgreed(e.target.checked)}
         />
@@ -419,8 +431,9 @@ export default function OrderForm({
       <button
         onClick={checkDuplicateThenSubmit}
         disabled={submitting}
-        className="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+        className="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50 flex items-center justify-center"
       >
+        {submitting && <Spinner />}
         {submitting ? "처리 중..." : "주문하기"}
       </button>
 

@@ -63,7 +63,7 @@ export async function GET(
     배송비: o.delivery_fee_charged || 0,
     입금상태: o.payment_status,
     배송상태: o.delivery_status,
-    주문일시: new Date(o.created_at).toLocaleString("ko-KR"),
+    주문일시: new Date(o.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
   }));
   const deliverySheet = XLSX.utils.json_to_sheet(deliveryRows);
 
@@ -79,7 +79,7 @@ export async function GET(
     결제금액: o.total_amount,
     입금상태: o.payment_status,
     수령상태: o.pickup_status || "",
-    주문일시: new Date(o.created_at).toLocaleString("ko-KR"),
+    주문일시: new Date(o.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }),
   }));
   const pickupSheet = XLSX.utils.json_to_sheet(pickupRows);
 
@@ -93,7 +93,7 @@ export async function GET(
       .join(", "),
     결제금액: o.total_amount,
     환불상태: o.refund_status || "-",
-    취소일시: o.cancelled_at ? new Date(o.cancelled_at).toLocaleString("ko-KR") : "",
+    취소일시: o.cancelled_at ? new Date(o.cancelled_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "",
   }));
   const cancelledSheet = XLSX.utils.json_to_sheet(cancelledRows);
 

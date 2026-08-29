@@ -16,7 +16,7 @@ export async function GET(
 
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("id, title, is_closed, payment_timeout_minutes, fulfillment_mode, delivery_fee")
+    .select("id, title, is_closed, payment_timeout_minutes, fulfillment_mode, delivery_fee, close_deadline")
     .eq("id", id)
     .single();
   if (!campaign) {

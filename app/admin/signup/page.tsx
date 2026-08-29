@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Spinner from "@/components/Spinner";
 
 const DEVICE_ID_KEY = "eggfarm_trial_device_id";
 
@@ -111,8 +112,9 @@ export default function SignupPage() {
         <button
           onClick={signup}
           disabled={loading}
-          className="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+          className="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50 flex items-center justify-center"
         >
+          {loading && <Spinner />}
           {loading ? "가입 중..." : "회원가입"}
         </button>
       </div>

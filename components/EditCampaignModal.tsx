@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatAccountNumber, formatNumberWithCommas } from "@/lib/format";
+import { formatAccountNumber, formatNumberWithCommas, formatPickupTimeNote } from "@/lib/format";
+import Spinner from "@/components/Spinner";
 
 type CampaignDetail = {
   id: string;
@@ -47,7 +48,9 @@ export default function EditCampaignModal({
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
   const [pickupExpectedDate, setPickupExpectedDate] = useState("");
-  const [pickupExpectedTimeNote, setPickupExpectedTimeNote] = useState("");
+  const [existingPickupTimeNote, setExistingPickupTimeNote] = useState("");
+  const [pickupFromTime, setPickupFromTime] = useState("");
+  const [pickupToTime, setPickupToTime] = useState("");
   const [complexes, setComplexes] = useState<string[]>([""]);
   const [fulfillmentMode, setFulfillmentMode] = useState<"pickup_only" | "delivery_only" | "hybrid">(
     "hybrid"
@@ -89,7 +92,7 @@ export default function EditCampaignModal({
           setCloseTime(d.toTimeString().slice(0, 5));
         }
         setPickupExpectedDate(c.pickup_expected_date || "");
-        setPickupExpectedTimeNote(c.pickup_expected_time_note || "");
+        setExistingPickupTimeNote(c.pickup_expected_time_note || "");
         const names: string[] = (data.complexes || []).map((x: { name: string }) => x.name);
         setComplexes(names.length > 0 ? names : [""]);
         setFulfillmentMode(c.fulfillment_mode || "hybrid");
@@ -198,8 +201,13 @@ export default function EditCampaignModal({
         inquiryUrl,
         startAt,
         closeDeadline,
-        pickupExpectedDate: pickupExpectedDate || null,
-        pickupExpectedTimeNote: pickupExpectedTimeNote || null,
+        pickupExpectedDate: fulfillmentMode !== "delivery_only" ? pickupExpectedDate || null : null,
+        pickupExpectedTimeNote:
+          fulfillmentMode === "delivery_only"
+            ? null
+            : pickupFromTime || pickupToTime
+            ? formatPickupTimeNote(pickupFromTime, pickupToTime)
+            : existingPickupTimeNote || null,
         complexes: validComplexes,
         products: products.map((p) => ({
           id: p.id || undefined,
@@ -247,6 +255,7 @@ export default function EditCampaignModal({
               />
               <input
                 type="time"
+                step="900"
                 className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
@@ -263,32 +272,54 @@ export default function EditCampaignModal({
               />
               <input
                 type="time"
+                step="900"
                 className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
                 value={closeTime}
                 onChange={(e) => setCloseTime(e.target.value)}
               />
             </div>
 
-            <p className="text-[12px] text-neutral-500 mb-1.5">
-              예상 현장수령일 (선택 — 구매자에게 안내됩니다)
-            </p>
-            <div className="flex gap-2 mb-1.5">
-              <input
-                type="date"
-                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                value={pickupExpectedDate}
-                onChange={(e) => setPickupExpectedDate(e.target.value)}
-              />
-              <input
-                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                placeholder="시간대 (예: 오후 2시~6시)"
-                value={pickupExpectedTimeNote}
-                onChange={(e) => setPickupExpectedTimeNote(e.target.value)}
-              />
-            </div>
-            <p className="text-[11px] text-neutral-400 mb-3">
-              입고 상황에 따라 일정이 변동될 수 있다는 안내가 구매자 화면에 자동으로 함께 표시됩니다.
-            </p>
+            {fulfillmentMode !== "delivery_only" && (
+              <>
+                <p className="text-[12px] text-neutral-500 mb-1.5">
+                  예상 현장수령일 (선택 — 구매자에게 안내됩니다)
+                </p>
+                <div className="flex gap-2 mb-1.5">
+                  <input
+                    type="date"
+                    className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+                    value={pickupExpectedDate}
+                    onChange={(e) => setPickupExpectedDate(e.target.value)}
+                  />
+                </div>
+                {existingPickupTimeNote && !pickupFromTime && !pickupToTime && (
+                  <p className="text-[11px] text-neutral-400 mb-1.5">
+                    현재 설정: {existingPickupTimeNote} (변경하려면 아래에서 새로 선택)
+                  </p>
+                )}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <input
+                    type="time"
+                    step="900"
+                    className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+                    value={pickupFromTime}
+                    onChange={(e) => setPickupFromTime(e.target.value)}
+                  />
+                  <span className="text-[12px] text-neutral-400 flex-shrink-0">~</span>
+                  <input
+                    type="time"
+                    step="900"
+                    className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+                    value={pickupToTime}
+                    onChange={(e) => setPickupToTime(e.target.value)}
+                  />
+                </div>
+                <p className="text-[11px] text-neutral-400 mb-3">
+                  입고 상황에 따라 일정이 변동될 수 있다는 안내가 구매자 화면에 자동으로 함께
+                  표시됩니다.
+                </p>
+              </>
+            )}
 
             <p className="text-[12px] text-neutral-500 mb-1.5">배송 가능한 아파트 단지</p>
             {fulfillmentMode === "pickup_only" ? (
@@ -434,8 +465,9 @@ export default function EditCampaignModal({
               <button
                 onClick={save}
                 disabled={saving}
-                className="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
+                className="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50 flex items-center justify-center"
               >
+                {saving && <Spinner />}
                 {saving ? "저장 중..." : "저장"}
               </button>
             </div>

@@ -86,7 +86,6 @@ export default function CampaignListClient() {
       account_number: string;
       account_holder: string;
       inquiry_url: string | null;
-      pickup_expected_time_note: string | null;
       fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
       delivery_fee: number;
     };
@@ -106,7 +105,6 @@ export default function CampaignListClient() {
       accountNumber: c.account_number,
       accountHolder: c.account_holder,
       inquiryUrl: c.inquiry_url || "",
-      pickupExpectedTimeNote: c.pickup_expected_time_note || "",
       complexes: complexNames,
       fulfillmentMode: c.fulfillment_mode || "hybrid",
       deliveryFee: c.delivery_fee || 0,

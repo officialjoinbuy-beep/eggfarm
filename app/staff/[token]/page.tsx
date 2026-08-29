@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatPhone, formatWon } from "@/lib/format";
 import { watermarkImage } from "@/lib/watermark";
+import Spinner from "@/components/Spinner";
 
 type Order = {
   id: string;
@@ -89,12 +90,16 @@ export default function StaffPage() {
     });
   }
 
+  const [shipLoading, setShipLoading] = useState(false);
+
   async function bulkShip() {
+    setShipLoading(true);
     await fetch(`/api/staff/${token}/bulk-ship`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds: Array.from(selected) }),
     });
+    setShipLoading(false);
     setSelected(new Set());
     load();
   }
@@ -149,10 +154,11 @@ export default function StaffPage() {
             전체선택
           </label>
           <button
-            disabled={selected.size === 0}
+            disabled={selected.size === 0 || shipLoading}
             onClick={bulkShip}
-            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40"
+            className="text-[12px] px-2.5 py-1.5 border rounded disabled:opacity-40 flex items-center"
           >
+            {shipLoading && <Spinner className="w-3 h-3" />}
             선택건 배송중 처리{selected.size > 0 ? ` (${selected.size})` : ""}
           </button>
         </div>
