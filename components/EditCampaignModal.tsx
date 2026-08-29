@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatAccountNumber, formatNumberWithCommas, formatPickupTimeNote } from "@/lib/format";
 import Spinner from "@/components/Spinner";
+import TimeSelect from "@/components/TimeSelect";
 
 type CampaignDetail = {
   id: string;
@@ -253,13 +254,7 @@ export default function EditCampaignModal({
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
-              <input
-                type="time"
-                step="900"
-                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
+              <TimeSelect className="flex-1" value={startTime} onChange={setStartTime} />
             </div>
 
             <p className="text-[12px] text-neutral-500 mb-1.5">마감일시 (선택)</p>
@@ -270,13 +265,7 @@ export default function EditCampaignModal({
                 value={closeDate}
                 onChange={(e) => setCloseDate(e.target.value)}
               />
-              <input
-                type="time"
-                step="900"
-                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                value={closeTime}
-                onChange={(e) => setCloseTime(e.target.value)}
-              />
+              <TimeSelect className="flex-1" value={closeTime} onChange={setCloseTime} />
             </div>
 
             {fulfillmentMode !== "delivery_only" && (
@@ -298,21 +287,9 @@ export default function EditCampaignModal({
                   </p>
                 )}
                 <div className="flex items-center gap-2 mb-1.5">
-                  <input
-                    type="time"
-                    step="900"
-                    className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                    value={pickupFromTime}
-                    onChange={(e) => setPickupFromTime(e.target.value)}
-                  />
+                  <TimeSelect className="flex-1" value={pickupFromTime} onChange={setPickupFromTime} />
                   <span className="text-[12px] text-neutral-400 flex-shrink-0">~</span>
-                  <input
-                    type="time"
-                    step="900"
-                    className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                    value={pickupToTime}
-                    onChange={(e) => setPickupToTime(e.target.value)}
-                  />
+                  <TimeSelect className="flex-1" value={pickupToTime} onChange={setPickupToTime} />
                 </div>
                 <p className="text-[11px] text-neutral-400 mb-3">
                   입고 상황에 따라 일정이 변동될 수 있다는 안내가 구매자 화면에 자동으로 함께

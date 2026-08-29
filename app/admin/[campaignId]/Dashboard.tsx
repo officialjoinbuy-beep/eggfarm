@@ -471,7 +471,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
 
   const orderUrl = typeof window !== "undefined" ? `${window.location.origin}/order/${campaignId}` : "";
   const currentRevenue = orders
-    .filter((o) => o.payment_status === "입금확인완료")
+    .filter((o) => o.payment_status === "입금확인완료" && !o.cancelled_at)
     .reduce((s, o) => s + o.total_amount, 0);
 
   return (
@@ -1114,7 +1114,9 @@ function CloseModal({
   loading?: boolean;
 }) {
   const waitCount = orders.filter((o) => o.payment_status === "입금확인대기").length;
-  const validOrders = orders.filter((o) => o.payment_status !== "주문취소(미입금)");
+  const validOrders = orders.filter(
+    (o) => o.payment_status !== "주문취소(미입금)" && !o.cancelled_at
+  );
   const total = validOrders.reduce((s, o) => s + o.total_amount, 0);
 
   return (

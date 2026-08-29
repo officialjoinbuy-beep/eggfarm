@@ -23,6 +23,35 @@ export async function GET(req: NextRequest) {
     p_owner_id: user.id,
   });
 
+  // 현재 살아있는(무효화 안됐고 만료 안된) 위임배송 링크 기준으로,
+  // 담당자별 담당 단지명 목록을 만든다.
+  const { data: delegations } = await supabase.rpc("list_active_delegations", {
+    p_owner_id: user.id,
+  });
+  const allComplexIds = Array.from(
+    new Set(
+      ((delegations ?? []) as { complex_ids: string[] }[]).flatMap((d) => d.complex_ids || [])
+    )
+  );
+  let complexIdToName: Record<string, string> = {};
+  if (allComplexIds.length > 0) {
+    const { data: complexRows } = await supabase
+      .from("campaign_complexes")
+      .select("id, name")
+      .in("id", allComplexIds);
+    complexIdToName = Object.fromEntries(
+      (complexRows ?? []).map((c: { id: string; name: string }) => [c.id, c.name])
+    );
+  }
+  const staffIdToComplexNames: Record<string, Set<string>> = {};
+  for (const d of (delegations ?? []) as { staff_id: string; complex_ids: string[] }[]) {
+    if (!staffIdToComplexNames[d.staff_id]) staffIdToComplexNames[d.staff_id] = new Set();
+    for (const cid of d.complex_ids || []) {
+      const name = complexIdToName[cid];
+      if (name) staffIdToComplexNames[d.staff_id].add(name);
+    }
+  }
+
   const result = (
     (staff ?? []) as {
       id: string;
@@ -42,6 +71,7 @@ export async function GET(req: NextRequest) {
       retention_expires_at: s.retention_expires_at,
       created_at: s.created_at,
       lastFeePerOrder: s.last_fee_per_order ?? null,
+      assignedComplexNames: Array.from(staffIdToComplexNames[s.id] ?? []),
     };
   });
 

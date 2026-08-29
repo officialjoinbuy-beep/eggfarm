@@ -42,20 +42,17 @@ export async function GET(req: NextRequest) {
     stale_pickup_count: staleCountByCampaign[c.id] ?? 0,
   }));
 
-  // 이번달 배송완료 매출 합계 (본인 소유 공구의 주문만)
-  const { data: deliveredOrders } = await supabase
-    .from("orders")
-    .select("total_amount, delivery_completed_at, campaigns!inner(owner_id)")
-    .eq("delivery_status", "배송완료")
-    .eq("campaigns.owner_id", user.id)
-    .gte("delivery_completed_at", monthStart.toISOString())
-    .lt("delivery_completed_at", monthEndExclusive.toISOString());
+  // 이번달 배송완료 매출 합계 - 삭제된 공구/주문과 무관하게 영구 보존되는
+  // delivery_revenue_log 테이블에서 집계한다(실시간 주문 재계산 방식 폐기).
+  const { data: deliveredLogs } = await supabase
+    .from("delivery_revenue_log")
+    .select("amount")
+    .eq("owner_id", user.id)
+    .gte("completed_at", monthStart.toISOString())
+    .lt("completed_at", monthEndExclusive.toISOString());
 
-  const monthRevenue = (deliveredOrders ?? []).reduce(
-    (sum, o) => sum + o.total_amount,
-    0
-  );
-  const monthDeliveredCount = (deliveredOrders ?? []).length;
+  const monthRevenue = (deliveredLogs ?? []).reduce((sum, o) => sum + o.amount, 0);
+  const monthDeliveredCount = (deliveredLogs ?? []).length;
 
   return NextResponse.json({
     monthRevenue,

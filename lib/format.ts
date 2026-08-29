@@ -57,13 +57,18 @@ export function sortByDongUnitDesc<T extends { dong?: string | null; unit_no?: s
 }
 // 현재 시각 기준 다음 정시를 { date: "YYYY-MM-DD", time: "HH:00" } 형태로 반환.
 // 공구 시작일시 입력칸의 기본값으로 사용 (예: 12:55에 폼을 열면 13:00으로 세팅).
-export function nextHour(): { date: string; time: string } {
+// 현재 시각 기준 가장 가까운 다음 15분 단위를 { date, time } 형태로 반환.
+// 공구 시작일시 입력칸의 기본값으로 사용 (예: 3:36에 폼을 열면 3:45로 세팅).
+export function next15Min(): { date: string; time: string } {
   const now = new Date();
-  now.setMinutes(0, 0, 0);
-  now.setHours(now.getHours() + 1);
+  now.setSeconds(0, 0);
+  const remainder = now.getMinutes() % 15;
+  if (remainder !== 0 || now.getSeconds() > 0) {
+    now.setMinutes(now.getMinutes() + (15 - remainder));
+  }
   const pad = (n: number) => String(n).padStart(2, "0");
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const time = `${pad(now.getHours())}:00`;
+  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
   return { date, time };
 }
 

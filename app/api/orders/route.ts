@@ -8,6 +8,15 @@ import { hashPhoneForNoshow } from "@/lib/noshow-hash";
 // 재고 확인 + 차감 + 주문 생성은 DB 함수 내부에서 하나의 트랜잭션으로 처리되므로
 // 여러 명이 동시에 주문해도 재고 초과가 발생하지 않는다.
 export async function POST(req: NextRequest) {
+  try {
+    return await handleCreateOrder(req);
+  } catch (e) {
+    console.error("POST /api/orders unhandled exception:", e);
+    return NextResponse.json({ error: "주문 처리 중 오류가 발생했습니다." }, { status: 500 });
+  }
+}
+
+async function handleCreateOrder(req: NextRequest) {
   const body = await req.json();
   const {
     campaignId,
@@ -102,10 +111,13 @@ export async function POST(req: NextRequest) {
   // 현장픽업 노쇼 2회 이상이면 차단 (진행자 계정 단위)
   if (isPickup) {
     const phoneHash = hashPhoneForNoshow(normalizedPhone);
-    const { data: blocked } = await supabase.rpc("is_noshow_blocked", {
+    const { data: blocked, error: noshowCheckError } = await supabase.rpc("is_noshow_blocked", {
       p_owner_id: campaign.owner_id,
       p_phone_hash: phoneHash,
     });
+    if (noshowCheckError) {
+      console.error("is_noshow_blocked check failed:", noshowCheckError);
+    }
     if (blocked) {
       return NextResponse.json(
         { error: "노쇼 2회로 현장픽업 주문이 제한되었습니다. 진행자에게 문의해주세요." },
@@ -128,6 +140,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
+      console.error("create_pickup_order failed:", error);
       if (error.message?.includes("OUT_OF_STOCK")) {
         return NextResponse.json(
           { error: "선택하신 상품 중 품절된 상품이 있습니다. 다시 확인해주세요." },
@@ -187,6 +200,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) {
+    console.error("create_order failed:", error);
     if (error.message?.includes("OUT_OF_STOCK")) {
       return NextResponse.json(
         { error: "선택하신 상품 중 품절된 상품이 있습니다. 다시 확인해주세요." },

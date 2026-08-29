@@ -10,6 +10,7 @@ type StaffPerson = {
   phone: string;
   retention_expires_at: string;
   created_at: string;
+  assignedComplexNames?: string[];
 };
 type Settlement = {
   id: string;
@@ -135,6 +136,13 @@ export default function StaffManagementClient() {
           <div key={s.id} className="border rounded-lg p-3">
             <p className="text-[13px] font-medium">{s.name}</p>
             <p className="text-[12px] text-neutral-500">{s.phone}</p>
+            {s.assignedComplexNames && s.assignedComplexNames.length > 0 ? (
+              <p className="text-[11px] text-neutral-600 mt-1 bg-neutral-100 rounded px-2 py-1 inline-block">
+                📍 담당 단지: {s.assignedComplexNames.join(", ")}
+              </p>
+            ) : (
+              <p className="text-[11px] text-neutral-400 mt-1">현재 담당 중인 단지 없음</p>
+            )}
             <p className="text-[11px] text-neutral-400 mt-1">
               보유기한:{" "}
               {new Date(s.retention_expires_at).toLocaleDateString("ko-KR", {

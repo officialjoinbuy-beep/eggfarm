@@ -200,12 +200,20 @@ export default function StaffPage() {
               </div>
             )}
             {tab === "done" && (
-              <button
-                onClick={() => setPhotoReplaceTarget(o)}
-                className="text-[11px] px-2 py-1.5 border rounded flex-shrink-0"
-              >
-                사진 재등록
-              </button>
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => revert(o.id)}
+                  className="text-[11px] px-2 py-1 bg-neutral-100 text-neutral-500 rounded"
+                >
+                  ↩되돌리기
+                </button>
+                <button
+                  onClick={() => setPhotoReplaceTarget(o)}
+                  className="text-[11px] px-2 py-1.5 border rounded"
+                >
+                  사진 재등록
+                </button>
+              </div>
             )}
           </div>
         ))}

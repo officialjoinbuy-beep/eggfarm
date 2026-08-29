@@ -97,9 +97,8 @@ export async function PATCH(
       break;
     }
     case "pickup_noshow": {
-      const { error } = await supabase.rpc("set_pickup_status", {
+      const { error } = await supabase.rpc("mark_pickup_noshow", {
         p_order_id: id,
-        p_to: "노쇼",
       });
       rpcError = error;
       if (!error) {

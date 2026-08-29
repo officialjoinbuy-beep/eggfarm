@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { formatWon } from "@/lib/format";
+import { formatWon, normalizePhone } from "@/lib/format";
 
 export default function PayView({
   campaignId,
@@ -26,7 +26,7 @@ export default function PayView({
   const [copied, setCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
   const hours = Math.round(timeoutMinutes / 60);
-  const suggestedDepositorName = `${phone.slice(-4)}${nickname.slice(0, 1)}`;
+  const suggestedDepositorName = normalizePhone(phone).replace(/^010/, "");
 
   async function copyAccount() {
     await navigator.clipboard.writeText(accountNumber);
@@ -64,17 +64,17 @@ export default function PayView({
       )}
 
       <div className="bg-white rounded-lg p-3.5 text-left border mt-3">
-        <p className="text-[12px] text-neutral-500 mb-1">추천 입금자명 (필수 아님, 예: 1234공)</p>
+        <p className="text-[12px] text-neutral-500 mb-1">추천 입금자명</p>
         <button
           onClick={copyDepositorName}
-          className="w-full flex items-center justify-between px-3 py-2.5 bg-neutral-50 rounded"
+          className="w-full flex items-center justify-between px-3 py-2.5 bg-red-50 rounded"
         >
-          <span className="text-[14px] font-medium">{suggestedDepositorName}</span>
+          <span className="text-[20px] font-bold text-red-600">{suggestedDepositorName}</span>
           <span className="text-[12px] text-neutral-400">복사</span>
         </button>
-        <p className="text-[11px] text-neutral-400 mt-1.5">
-          이체 앱에서 보내는분 이름을 바꿀 수 있다면, 입금자명을 아래 양식으로 해주세요.
-          진행자가 입금을 확인할 때 이 이름으로 빠르게 찾을 수 있어요.
+        <p className="text-[11px] text-red-500 mt-1.5 font-medium">
+          위 이름을 복사해서 그대로 입금자명에 붙여넣어주세요. 이 이름으로만 입금확인이
+          가능합니다.
         </p>
       </div>
       {nameCopied && (
