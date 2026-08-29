@@ -12,6 +12,8 @@ export async function POST(req: NextRequest) {
     inquiryUrl,
     startAt,
     closeDeadline,
+    pickupExpectedDate,
+    pickupExpectedTimeNote,
     complexes,
     products,
     fulfillmentMode,
@@ -24,6 +26,8 @@ export async function POST(req: NextRequest) {
     inquiryUrl?: string;
     startAt?: string; // ISO datetime string, optional
     closeDeadline?: string; // ISO datetime string, optional
+    pickupExpectedDate?: string; // YYYY-MM-DD, optional
+    pickupExpectedTimeNote?: string; // 자유입력 텍스트, optional
     complexes: string[];
     fulfillmentMode?: "pickup_only" | "delivery_only" | "hybrid";
     deliveryFee?: number;
@@ -67,6 +71,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "시작일시는 마감일시보다 이전이어야 합니다." }, { status: 400 });
   }
 
+  // 모든 입력값 검증을 통과한 시도만 한도를 차감한다(검증 실패로 끝난 시도는 차감하지 않음).
+  const { error: limitError } = await supabase.rpc("increment_campaign_count", {
+    p_owner_id: user.id,
+  });
+  if (limitError) {
+    return NextResponse.json(
+      {
+        error: "공구 생성 가능 횟수를 모두 사용했습니다.",
+        code: "CAMPAIGN_LIMIT_REACHED",
+        supportChatUrl: process.env.NEXT_PUBLIC_SUPPORT_CHAT_URL || null,
+      },
+      { status: 403 }
+    );
+  }
+
   const { data: campaign, error } = await supabase
     .from("campaigns")
     .insert({
@@ -78,6 +97,8 @@ export async function POST(req: NextRequest) {
       inquiry_url: inquiryUrl || null,
       start_at: startAt || null,
       close_deadline: closeDeadline || null,
+      pickup_expected_date: pickupExpectedDate || null,
+      pickup_expected_time_note: pickupExpectedTimeNote || null,
       fulfillment_mode: mode,
       delivery_fee: mode === "pickup_only" ? 0 : Math.max(0, Number(deliveryFee) || 0),
     })

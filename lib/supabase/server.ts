@@ -10,6 +10,9 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        maxAge: 60 * 60 * 24 * 30, // 브라우저 클라이언트와 동일하게 30일 유지
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();

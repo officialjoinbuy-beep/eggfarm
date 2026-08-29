@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, nickname, phone, total_amount, pickup_status, campaign_id, order_items(product_name_snapshot, quantity)"
+      "id, nickname, phone, total_amount, pickup_status, cancelled_at, campaign_id, order_items(product_name_snapshot, quantity)"
     )
     .eq("campaign_id", campaignId)
     .eq("pickup_token", token)
@@ -23,6 +23,9 @@ export async function POST(req: NextRequest) {
 
   if (!order) {
     return NextResponse.json({ error: "일치하는 픽업 주문을 찾을 수 없습니다." }, { status: 404 });
+  }
+  if (order.cancelled_at) {
+    return NextResponse.json({ error: "취소된 주문입니다." }, { status: 409 });
   }
   if (order.pickup_status !== "수령대기") {
     return NextResponse.json(

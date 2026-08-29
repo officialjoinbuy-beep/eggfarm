@@ -30,6 +30,7 @@ export async function GET(
     .eq("campaign_id", link.campaign_id)
     .eq("fulfillment_type", "배송")
     .eq("payment_status", "입금확인완료")
+    .is("cancelled_at", null)
     .in("complex_name", allowedNames.length > 0 ? allowedNames : ["__none__"]);
 
   const sorted = sortByDongUnitDesc(orders ?? []);

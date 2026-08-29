@@ -16,17 +16,36 @@ export async function DELETE(
 
   // 이 담당자로 발급된 살아있는(무효화 안됐고 만료 안된) 위임배송 링크가
   // 있으면 삭제를 막는다 - 진행 중인 배송담당자 화면 접속이 갑자기
-  // 끊기는 사고를 방지하기 위함.
+  // 끊기는 사고를 방지하기 위함. 어느 공구의 링크인지 몰라 못 찾는 문제가
+  // 있었어서, 공구 제목/단지명까지 같이 내려줘서 화면에서 바로가기를 만들 수 있게 함.
   const { data: liveLinks } = await supabase
     .from("delivery_staff_links")
-    .select("id")
+    .select("campaign_id, complex_ids, campaigns!inner(title)")
     .eq("staff_id", id)
     .eq("revoked", false)
-    .gt("expires_at", new Date().toISOString())
-    .limit(1);
+    .gt("expires_at", new Date().toISOString());
+
   if (liveLinks && liveLinks.length > 0) {
+    const campaignIds = Array.from(new Set(liveLinks.map((l) => l.campaign_id)));
+    const { data: complexes } = await supabase
+      .from("campaign_complexes")
+      .select("id, name")
+      .in("campaign_id", campaignIds);
+    const complexNameById = Object.fromEntries((complexes ?? []).map((c) => [c.id, c.name]));
+
+    const campaigns = liveLinks.map((l) => ({
+      campaignId: l.campaign_id,
+      campaignTitle: (l.campaigns as unknown as { title: string }).title,
+      complexNames: (l.complex_ids as string[])
+        .map((cid) => complexNameById[cid])
+        .filter(Boolean),
+    }));
+
     return NextResponse.json(
-      { error: "이 담당자로 발급된 살아있는 위임배송 링크가 있어 삭제할 수 없습니다. 먼저 해당 링크를 무효화해주세요." },
+      {
+        error: "이 담당자로 발급된 살아있는 위임배송 링크가 있어 삭제할 수 없습니다. 먼저 해당 링크를 무효화해주세요.",
+        campaigns,
+      },
       { status: 409 }
     );
   }

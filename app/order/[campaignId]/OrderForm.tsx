@@ -23,6 +23,8 @@ export default function OrderForm({
   complexes,
   fulfillmentMode,
   deliveryFee,
+  pickupExpectedDate,
+  pickupExpectedTimeNote,
 }: {
   campaignId: string;
   title: string;
@@ -30,6 +32,8 @@ export default function OrderForm({
   complexes: Complex[];
   fulfillmentMode: "pickup_only" | "delivery_only" | "hybrid";
   deliveryFee: number;
+  pickupExpectedDate?: string | null;
+  pickupExpectedTimeNote?: string | null;
 }) {
   const router = useRouter();
   const [quantities, setQuantities] = useState<Record<string, number>>(
@@ -174,6 +178,25 @@ export default function OrderForm({
   return (
     <div className="bg-neutral-50 rounded-2xl p-5 border border-neutral-200">
       <h1 className="text-[15px] font-medium mb-3">{title || "상품을 선택해주세요"}</h1>
+
+      {fulfillmentMode !== "delivery_only" && (pickupExpectedDate || pickupExpectedTimeNote) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4">
+          <p className="text-[13px] text-amber-900">
+            📦 예상 수령일:{" "}
+            {pickupExpectedDate
+              ? new Date(`${pickupExpectedDate}T00:00:00`).toLocaleDateString("ko-KR", {
+                  month: "long",
+                  day: "numeric",
+                  weekday: "short",
+                })
+              : "미정"}
+            {pickupExpectedTimeNote ? ` ${pickupExpectedTimeNote}` : ""}
+          </p>
+          <p className="text-[11px] text-amber-700 mt-1">
+            ※ 입고 상황에 따라 일정이 변동될 수 있으니, 정확한 안내는 진행자 공지를 확인해주세요.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2 mb-4">
         {products.map((p) => {

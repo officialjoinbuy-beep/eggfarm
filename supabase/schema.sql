@@ -22,6 +22,8 @@ create table public.campaigns (
   closed_at timestamptz,
   close_deadline timestamptz, -- 마감 예정일시(선택) - 지나면 자동 마감
   start_at timestamptz, -- 시작 예정일시(선택) - 예약생성용, 이 시각 전에는 주문접수 차단
+  pickup_expected_date date, -- 예상 현장수령일자(선택)
+  pickup_expected_time_note text, -- 예상 수령시간 안내문구(자유입력, 예: "오후 2시~6시")
   created_at timestamptz not null default now()
 );
 
@@ -1515,3 +1517,193 @@ begin
 end;
 $$;
 
+-- ============================================================
+-- v11 확장: 주문취소가 실제 배송/픽업 처리 흐름에서 완전히 제외되도록 보강,
+--          위임 현황 요약 조회, 집계표 취소 제외는 API 라우트에서 처리
+-- ============================================================
+
+-- 취소된 주문은 일괄 배송중 처리 대상에서 제외
+create or replace function public.bulk_set_shipping(p_order_ids uuid[])
+returns void
+language plpgsql
+as $$
+begin
+  update public.orders
+  set delivery_status = '배송중'
+  where id = any(p_order_ids)
+    and delivery_status = '배송준비'
+    and cancelled_at is null;
+end;
+$$;
+
+-- 취소된 주문은 배송상태 변경(배송중/배송완료/되돌리기)에서 제외
+create or replace function public.set_delivery_status_safe(p_order_id uuid, p_from delivery_status, p_to delivery_status)
+returns void
+language plpgsql
+as $$
+begin
+  update public.orders
+  set delivery_status = p_to,
+      delivery_completed_at = case when p_to = '배송완료' then now() else null end,
+      delivery_photo_url = case when p_to <> '배송완료' then null else delivery_photo_url end
+  where id = p_order_id and delivery_status = p_from and cancelled_at is null;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, p_from::text, p_to::text);
+end;
+$$;
+
+-- 취소된 주문은 픽업상태 변경(수령완료/노쇼)에서 제외
+create or replace function public.set_pickup_status(p_order_id uuid, p_to text)
+returns void
+language plpgsql
+as $$
+declare
+  v_from text;
+begin
+  select pickup_status into v_from from public.orders where id = p_order_id;
+
+  update public.orders
+  set pickup_status = p_to,
+      pickup_completed_at = case when p_to = '수령완료' then now() else pickup_completed_at end,
+      on_site_paid = case
+        when p_to = '수령완료' and payment_method = '현장결제' then true
+        else on_site_paid
+      end
+  where id = p_order_id and pickup_status = '수령대기' and cancelled_at is null;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, coalesce(v_from, ''), p_to);
+end;
+$$;
+
+-- 위임 현황 요약 (관리자 홈 배너용) - 마감된 지 2일 안 지난, 살아있는
+-- (무효화 안됐고 만료 안된) 위임배송 링크를 공구/단지/담당자 정보와 함께 조회
+create or replace function public.list_active_delegations(p_owner_id uuid)
+returns table(
+  link_id uuid,
+  campaign_id uuid,
+  campaign_title text,
+  complex_ids uuid[],
+  staff_id uuid,
+  expires_at timestamptz
+)
+language sql
+as $$
+  select
+    l.id, c.id, c.title, l.complex_ids, l.staff_id, l.expires_at
+  from public.delivery_staff_links l
+  join public.campaigns c on c.id = l.campaign_id
+  where c.owner_id = p_owner_id
+    and not l.revoked
+    and l.expires_at > now()
+  order by l.expires_at asc;
+$$;
+
+-- ------------------------------------------------------------
+-- v16. 체험판 이용한도(account_limits) + 재가입 감지(trial_device_signups)
+-- ------------------------------------------------------------
+
+-- 진행자(owner) 1인당 1행. 회원가입 시 트리거로 자동 생성됨.
+create table public.account_limits (
+  owner_id uuid primary key references auth.users(id) on delete cascade,
+  campaign_limit int not null default 10, -- 무료체험 10회, 결제 후 진행자가 수동으로 늘려줌
+  campaigns_created_count int not null default 0, -- 누적 생성횟수(삭제해도 감소하지 않음)
+  trial_exhausted_at timestamptz, -- 한도 소진 시점(15일 후 계정 삭제 기준)
+  is_repeat_device boolean not null default false, -- 가입 시 이미 사용된 브라우저로 감지됨(참고용, 차단 아님)
+  created_at timestamptz not null default now()
+);
+
+alter table public.account_limits enable row level security;
+
+create policy "owner_select_account_limits" on public.account_limits
+  for select using (auth.uid() = owner_id);
+
+-- 신규 가입 시 account_limits 행을 자동 생성
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.account_limits (owner_id) values (new.id)
+  on conflict (owner_id) do nothing;
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- 공구 생성 시 원자적으로 한도 체크 + 카운트 증가. 한도 초과 시 예외 발생.
+create or replace function public.increment_campaign_count(p_owner_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_limit int;
+  v_count int;
+begin
+  select campaign_limit, campaigns_created_count into v_limit, v_count
+  from public.account_limits
+  where owner_id = p_owner_id
+  for update;
+
+  if v_limit is null then
+    insert into public.account_limits (owner_id) values (p_owner_id)
+    on conflict (owner_id) do nothing;
+    v_limit := 10;
+    v_count := 0;
+  end if;
+
+  if v_count >= v_limit then
+    raise exception 'CAMPAIGN_LIMIT_REACHED';
+  end if;
+
+  update public.account_limits
+  set campaigns_created_count = v_count + 1,
+      trial_exhausted_at = case when v_count + 1 >= v_limit then now() else trial_exhausted_at end
+  where owner_id = p_owner_id;
+end;
+$$;
+
+-- 결제 확인 후 진행자가 수동으로 한도를 늘려줄 때 사용(관리 콘솔/SQL에서 직접 호출)
+create or replace function public.increase_campaign_limit(p_owner_id uuid, p_new_limit int)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update public.account_limits
+  set campaign_limit = p_new_limit,
+      trial_exhausted_at = null
+  where owner_id = p_owner_id;
+end;
+$$;
+
+-- 가입 시 브라우저 기기값(device_id) 사용 이력 추적 (완전 차단이 아닌 감지 목적)
+create table public.trial_device_signups (
+  device_id text primary key,
+  signup_count int not null default 1,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+
+alter table public.trial_device_signups enable row level security;
+-- 클라이언트 직접 접근 없이 서버(service role)에서만 다루므로 별도 정책 불필요.
+
+-- 삭제 대상(7일 미사용 or 한도소진 15일경과) 계정 목록 조회 - cron이 호출
+create or replace function public.list_purgeable_trial_accounts()
+returns table(owner_id uuid)
+language sql
+security definer
+as $$
+  select al.owner_id
+  from public.account_limits al
+  join auth.users u on u.id = al.owner_id
+  where
+    (al.campaigns_created_count = 0 and u.created_at < now() - interval '7 days')
+    or (al.trial_exhausted_at is not null and al.trial_exhausted_at < now() - interval '15 days');
+$$;

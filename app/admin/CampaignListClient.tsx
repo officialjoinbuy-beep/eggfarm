@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CampaignForm, { CampaignPrefill } from "@/components/CampaignForm";
 import AdminCalendar from "./AdminCalendar";
+import LimitReachedModal from "./LimitReachedModal";
 
 type Campaign = {
   id: string;
@@ -45,6 +46,9 @@ export default function CampaignListClient() {
   const [regenerating, setRegenerating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [limitReachedChatUrl, setLimitReachedChatUrl] = useState<string | null | undefined>(
+    undefined
+  );
 
   async function load() {
     const res = await fetch("/api/admin/campaigns/mine");
@@ -82,6 +86,7 @@ export default function CampaignListClient() {
       account_number: string;
       account_holder: string;
       inquiry_url: string | null;
+      pickup_expected_time_note: string | null;
       fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
       delivery_fee: number;
     };
@@ -101,6 +106,7 @@ export default function CampaignListClient() {
       accountNumber: c.account_number,
       accountHolder: c.account_holder,
       inquiryUrl: c.inquiry_url || "",
+      pickupExpectedTimeNote: c.pickup_expected_time_note || "",
       complexes: complexNames,
       fulfillmentMode: c.fulfillment_mode || "hybrid",
       deliveryFee: c.delivery_fee || 0,
@@ -141,6 +147,7 @@ export default function CampaignListClient() {
               setPrefill(undefined);
               setShowForm(false);
             }}
+            onLimitReached={(supportChatUrl) => setLimitReachedChatUrl(supportChatUrl)}
           />
         </div>
       ) : (
@@ -150,6 +157,13 @@ export default function CampaignListClient() {
         >
           + 새 공구 만들기
         </button>
+      )}
+
+      {limitReachedChatUrl !== undefined && (
+        <LimitReachedModal
+          supportChatUrl={limitReachedChatUrl}
+          onClose={() => setLimitReachedChatUrl(undefined)}
+        />
       )}
 
       <AdminCalendar onRegenerate={regenerateFrom} regenerating={regenerating} />

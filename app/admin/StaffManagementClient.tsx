@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatWon } from "@/lib/format";
 
 type StaffPerson = {
@@ -17,6 +18,7 @@ type Settlement = {
   completedCount: number;
   settlementAmount: number;
 };
+type BlockedCampaign = { campaignId: string; campaignTitle: string; complexNames: string[] };
 
 function isRetentionPromptWindow() {
   const now = new Date();
@@ -24,11 +26,13 @@ function isRetentionPromptWindow() {
 }
 
 export default function StaffManagementClient() {
+  const router = useRouter();
   const [staff, setStaff] = useState<StaffPerson[]>([]);
   const [reveal, setReveal] = useState(false);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [monthLabel, setMonthLabel] = useState("");
   const [loading, setLoading] = useState(true);
+  const [blockedCampaigns, setBlockedCampaigns] = useState<BlockedCampaign[] | null>(null);
 
   async function load() {
     const [staffRes, settleRes] = await Promise.all([
@@ -63,6 +67,10 @@ export default function StaffManagementClient() {
     const res = await fetch(`/api/admin/staff/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
+      if (data.campaigns && data.campaigns.length > 0) {
+        setBlockedCampaigns(data.campaigns);
+        return;
+      }
       alert(data.error || "삭제에 실패했습니다.");
       return;
     }
@@ -149,6 +157,37 @@ export default function StaffManagementClient() {
           </div>
         ))}
       </div>
+
+      {blockedCampaigns && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-5 z-50">
+          <div className="bg-white rounded-2xl border p-5 w-full max-w-sm shadow-xl">
+            <p className="text-[15px] font-medium mb-2">삭제할 수 없어요</p>
+            <p className="text-[13px] text-neutral-500 mb-3">
+              아래 공구에 살아있는 위임배송 링크가 있습니다. 먼저 무효화해주세요.
+            </p>
+            <div className="flex flex-col gap-2 mb-4">
+              {blockedCampaigns.map((c) => (
+                <button
+                  key={c.campaignId}
+                  onClick={() => router.push(`/admin/${c.campaignId}`)}
+                  className="text-left border rounded-lg p-2.5 hover:bg-neutral-50"
+                >
+                  <p className="text-[13px] font-medium">{c.campaignTitle}</p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    {c.complexNames.join(", ") || "단지 정보 없음"} · 바로가기 →
+                  </p>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setBlockedCampaigns(null)}
+              className="w-full border rounded-lg py-2 text-sm"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

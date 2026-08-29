@@ -11,6 +11,8 @@ export default function PayView({
   accountHolder,
   totalAmount,
   timeoutMinutes,
+  nickname,
+  phone,
 }: {
   campaignId: string;
   bankName: string;
@@ -18,14 +20,24 @@ export default function PayView({
   accountHolder: string;
   totalAmount: number;
   timeoutMinutes: number;
+  nickname: string;
+  phone: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [nameCopied, setNameCopied] = useState(false);
   const hours = Math.round(timeoutMinutes / 60);
+  const suggestedDepositorName = `${nickname}${phone.slice(-4)}`;
 
   async function copyAccount() {
     await navigator.clipboard.writeText(accountNumber);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function copyDepositorName() {
+    await navigator.clipboard.writeText(suggestedDepositorName);
+    setNameCopied(true);
+    setTimeout(() => setNameCopied(false), 2000);
   }
 
   return (
@@ -49,6 +61,24 @@ export default function PayView({
 
       {copied && (
         <p className="text-[12px] text-green-600 mt-2">계좌번호가 복사됐습니다</p>
+      )}
+
+      <div className="bg-white rounded-lg p-3.5 text-left border mt-3">
+        <p className="text-[12px] text-neutral-500 mb-1">추천 입금자명 (필수 아님)</p>
+        <button
+          onClick={copyDepositorName}
+          className="w-full flex items-center justify-between px-3 py-2.5 bg-neutral-50 rounded"
+        >
+          <span className="text-[14px] font-medium">{suggestedDepositorName}</span>
+          <span className="text-[12px] text-neutral-400">복사</span>
+        </button>
+        <p className="text-[11px] text-neutral-400 mt-1.5">
+          이체 앱에서 보내는분 이름을 바꿀 수 있다면, 닉네임+연락처 뒷자리로 남겨주시면
+          진행자가 입금 확인할 때 훨씬 빨리 찾을 수 있어요.
+        </p>
+      </div>
+      {nameCopied && (
+        <p className="text-[12px] text-green-600 mt-2">입금자명이 복사됐습니다</p>
       )}
 
       <p className="text-[17px] font-medium mt-4">입금액 {formatWon(totalAmount)}</p>

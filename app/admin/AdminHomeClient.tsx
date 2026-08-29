@@ -1,15 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import CampaignListClient from "./CampaignListClient";
 import StaffManagementClient from "./StaffManagementClient";
 import NoshowManagementClient from "./NoshowManagementClient";
+import DelegationBanner from "./DelegationBanner";
+import TrialUsageBanner from "./TrialUsageBanner";
 
 export default function AdminHomeClient() {
+  const router = useRouter();
   const [tab, setTab] = useState<"campaigns" | "staff" | "noshow">("campaigns");
+
+  async function logout() {
+    if (!window.confirm("로그아웃할까요?")) return;
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/admin/login");
+    router.refresh();
+  }
 
   return (
     <div>
+      <div className="flex justify-end mb-2">
+        <button onClick={logout} className="text-[12px] text-neutral-400 underline">
+          로그아웃
+        </button>
+      </div>
+
+      <DelegationBanner />
+      <TrialUsageBanner />
+
       <div className="flex gap-1.5 mb-5 bg-neutral-100 rounded-lg p-1">
         <button
           onClick={() => setTab("campaigns")}

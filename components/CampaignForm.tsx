@@ -29,6 +29,7 @@ export type CampaignPrefill = {
   accountNumber: string; // 표시용(하이픈 포함 가능)
   accountHolder: string;
   inquiryUrl: string;
+  pickupExpectedTimeNote: string;
   complexes: string[];
   fulfillmentMode: "pickup_only" | "delivery_only" | "hybrid";
   deliveryFee: number;
@@ -50,10 +51,12 @@ const MODE_OPTIONS: { value: "pickup_only" | "delivery_only" | "hybrid"; label: 
 export default function CampaignForm({
   onCreated,
   onCancel,
+  onLimitReached,
   prefill,
 }: {
   onCreated: (campaignId: string) => void;
   onCancel: () => void;
+  onLimitReached?: (supportChatUrl: string | null) => void;
   prefill?: CampaignPrefill;
 }) {
   const [title, setTitle] = useState(prefill?.title ?? "");
@@ -81,6 +84,10 @@ export default function CampaignForm({
   const [startTime, setStartTime] = useState(() => nextHour().time);
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
+  const [pickupExpectedDate, setPickupExpectedDate] = useState("");
+  const [pickupExpectedTimeNote, setPickupExpectedTimeNote] = useState(
+    prefill?.pickupExpectedTimeNote ?? ""
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -165,6 +172,8 @@ export default function CampaignForm({
         inquiryUrl,
         startAt,
         closeDeadline,
+        pickupExpectedDate: pickupExpectedDate || undefined,
+        pickupExpectedTimeNote: pickupExpectedTimeNote || undefined,
         fulfillmentMode,
         deliveryFee: fulfillmentMode === "pickup_only" ? 0 : Number(deliveryFee.replace(/[^0-9]/g, "")) || 0,
         complexes: fulfillmentMode === "pickup_only" ? [] : validComplexes,
@@ -180,6 +189,10 @@ export default function CampaignForm({
     const data = await res.json();
     setSubmitting(false);
     if (!res.ok) {
+      if (data.code === "CAMPAIGN_LIMIT_REACHED" && onLimitReached) {
+        onLimitReached(data.supportChatUrl ?? null);
+        return;
+      }
       setError(data.error || "공구 생성에 실패했습니다.");
       return;
     }
@@ -237,6 +250,27 @@ export default function CampaignForm({
           onChange={(e) => setCloseTime(e.target.value)}
         />
       </div>
+
+      <p className="text-[12px] text-neutral-500 mb-1.5">
+        예상 현장수령일 (선택 — 구매자에게 안내됩니다)
+      </p>
+      <div className="flex gap-2 mb-1.5">
+        <input
+          type="date"
+          className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+          value={pickupExpectedDate}
+          onChange={(e) => setPickupExpectedDate(e.target.value)}
+        />
+        <input
+          className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+          placeholder="시간대 (예: 오후 2시~6시)"
+          value={pickupExpectedTimeNote}
+          onChange={(e) => setPickupExpectedTimeNote(e.target.value)}
+        />
+      </div>
+      <p className="text-[11px] text-neutral-400 mb-3">
+        입고 상황에 따라 일정이 변동될 수 있다는 안내가 구매자 화면에 자동으로 함께 표시됩니다.
+      </p>
 
       <p className="text-[12px] text-neutral-500 mb-1.5">수령방식 (생성 후 변경 불가)</p>
       <div className="flex gap-1.5 mb-3">

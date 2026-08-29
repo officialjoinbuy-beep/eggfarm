@@ -12,7 +12,9 @@ export default async function OrderPage({
 
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("id, title, is_closed, start_at, fulfillment_mode, delivery_fee")
+    .select(
+      "id, title, is_closed, start_at, fulfillment_mode, delivery_fee, pickup_expected_date, pickup_expected_time_note"
+    )
     .eq("id", campaignId)
     .single();
 
@@ -77,6 +79,8 @@ export default async function OrderPage({
         complexes={campaign.fulfillment_mode === "pickup_only" ? [] : complexes ?? []}
         fulfillmentMode={campaign.fulfillment_mode || "hybrid"}
         deliveryFee={campaign.delivery_fee || 0}
+        pickupExpectedDate={campaign.pickup_expected_date}
+        pickupExpectedTimeNote={campaign.pickup_expected_time_note}
       />
     </main>
   );

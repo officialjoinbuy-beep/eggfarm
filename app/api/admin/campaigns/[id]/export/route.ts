@@ -16,17 +16,21 @@ export async function GET(
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const { data: orders } = await supabase
+  const { data: allOrders } = await supabase
     .from("orders")
     .select(
-      "nickname, phone, address, complex_name, dong, unit_no, entry_password, fulfillment_type, payment_method, total_amount, payment_status, delivery_status, pickup_status, created_at, order_items(product_name_snapshot, quantity, unit_price)"
+      "nickname, phone, address, complex_name, dong, unit_no, entry_password, fulfillment_type, payment_method, total_amount, delivery_fee_charged, payment_status, delivery_status, pickup_status, cancelled_at, refund_status, created_at, order_items(product_name_snapshot, quantity, unit_price)"
     )
     .eq("campaign_id", id)
     .neq("payment_status", "주문취소(미입금)");
 
-  if (!orders) {
+  if (!allOrders) {
     return NextResponse.json({ error: "데이터를 찾을 수 없습니다." }, { status: 404 });
   }
+
+  // 결제 후 취소된 주문은 발주/매출 집계에서 제외하고 별도 시트로 뺀다
+  const orders = allOrders.filter((o) => !o.cancelled_at);
+  const cancelledOrders = allOrders.filter((o) => !!o.cancelled_at);
 
   // 1) 발주용 요약: 상품별 총 수량
   const summaryMap = new Map<string, number>();
@@ -56,6 +60,7 @@ export async function GET(
       .map((i) => `${i.product_name_snapshot} x${i.quantity}`)
       .join(", "),
     결제금액: o.total_amount,
+    배송비: o.delivery_fee_charged || 0,
     입금상태: o.payment_status,
     배송상태: o.delivery_status,
     주문일시: new Date(o.created_at).toLocaleString("ko-KR"),
@@ -78,10 +83,25 @@ export async function GET(
   }));
   const pickupSheet = XLSX.utils.json_to_sheet(pickupRows);
 
+  // 4) 취소/환불 내역
+  const cancelledRows = cancelledOrders.map((o) => ({
+    닉네임: o.nickname,
+    연락처: formatPhone(o.phone),
+    구분: o.fulfillment_type,
+    주문상품: (o.order_items as any[])
+      .map((i) => `${i.product_name_snapshot} x${i.quantity}`)
+      .join(", "),
+    결제금액: o.total_amount,
+    환불상태: o.refund_status || "-",
+    취소일시: o.cancelled_at ? new Date(o.cancelled_at).toLocaleString("ko-KR") : "",
+  }));
+  const cancelledSheet = XLSX.utils.json_to_sheet(cancelledRows);
+
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, summarySheet, "발주용 요약");
   XLSX.utils.book_append_sheet(workbook, deliverySheet, "문앞배송 상세");
   XLSX.utils.book_append_sheet(workbook, pickupSheet, "현장픽업 상세");
+  XLSX.utils.book_append_sheet(workbook, cancelledSheet, "취소환불 내역");
 
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 

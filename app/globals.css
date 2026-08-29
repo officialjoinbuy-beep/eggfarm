@@ -19,7 +19,22 @@
 html {
   overflow-x: hidden;
   max-width: 100%;
+  width: 100%;
   color-scheme: light;
+}
+
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
+}
+
+/* iOS Safari에서 flex 자식 요소가 컨테이너보다 넓어져도 overflow-x:hidden이
+   제대로 안 먹히는 경우가 있어, flex/grid 자식들의 기본 min-width를 0으로
+   깔아준다 (내용이 넘치면 줄바꿈/축소되게). 아이콘처럼 줄어들면 안 되는
+   요소는 flex-shrink-0을 이미 쓰고 있어 영향 없음. */
+* {
+  min-width: 0;
 }
 
 body {

@@ -19,7 +19,7 @@ export async function GET(
   const { data: campaign } = await supabase
     .from("campaigns")
     .select(
-      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, is_closed, fulfillment_mode, delivery_fee"
+      "id, title, bank_name, account_number, account_holder, inquiry_url, start_at, close_deadline, pickup_expected_date, pickup_expected_time_note, is_closed, fulfillment_mode, delivery_fee"
     )
     .eq("id", id)
     .single();
@@ -58,6 +58,8 @@ export async function PATCH(
     inquiryUrl,
     startAt,
     closeDeadline,
+    pickupExpectedDate,
+    pickupExpectedTimeNote,
     complexes,
     products,
     deletedProductIds,
@@ -69,6 +71,8 @@ export async function PATCH(
     inquiryUrl?: string;
     startAt?: string | null;
     closeDeadline?: string | null;
+    pickupExpectedDate?: string | null;
+    pickupExpectedTimeNote?: string | null;
     complexes: string[];
     products?: {
       id?: string; // 없으면 신규 추가
@@ -161,6 +165,8 @@ export async function PATCH(
       inquiry_url: inquiryUrl || null,
       start_at: startAt || null,
       close_deadline: closeDeadline || null,
+      pickup_expected_date: pickupExpectedDate || null,
+      pickup_expected_time_note: pickupExpectedTimeNote || null,
     })
     .eq("id", id);
 

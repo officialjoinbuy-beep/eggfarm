@@ -1,7 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+
+const DEVICE_ID_KEY = "eggfarm_trial_device_id";
+
+function getOrCreateDeviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    // 시크릿모드 등 localStorage 접근 불가 시에도 가입 자체는 막지 않는다.
+    return crypto.randomUUID();
+  }
+}
+
+// abc+1@gmail.com 같은 별칭(+트릭)으로 같은 메일함을 여러 계정처럼 쓰는 걸 막는다.
+function hasPlusTrick(email: string) {
+  const local = email.split("@")[0] || "";
+  return local.includes("+");
+}
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -9,9 +31,28 @@ export default function SignupPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [repeatDeviceWarning, setRepeatDeviceWarning] = useState(false);
+
+  useEffect(() => {
+    const deviceId = getOrCreateDeviceId();
+    fetch("/api/admin/check-device", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.repeat) setRepeatDeviceWarning(true);
+      })
+      .catch(() => {});
+  }, []);
 
   async function signup() {
     setError(null);
+    if (hasPlusTrick(email)) {
+      setError("이메일 주소에 '+' 기호는 사용할 수 없습니다.");
+      return;
+    }
     if (password.length < 8) {
       setError("비밀번호는 8자 이상으로 설정해주세요.");
       return;
@@ -44,6 +85,12 @@ export default function SignupPage() {
     <main className="max-w-md mx-auto p-5">
       <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
         <p className="text-[16px] font-medium mb-5">진행자 회원가입</p>
+        {repeatDeviceWarning && (
+          <p className="text-[12px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3.5 text-left">
+            ⚠️ 이 기기에서 이미 체험 가입 이력이 확인됩니다. 이미 체험해보셨다면 결제를 통해
+            정식 이용을 진행해주세요.
+          </p>
+        )}
         <div className="flex flex-col gap-2.5 text-left mb-3.5">
           <input
             className="w-full border rounded px-3 py-2 text-sm"

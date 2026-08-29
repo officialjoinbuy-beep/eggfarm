@@ -12,6 +12,8 @@ type CampaignDetail = {
   inquiry_url: string | null;
   close_deadline: string | null;
   start_at: string | null;
+  pickup_expected_date: string | null;
+  pickup_expected_time_note: string | null;
   fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
 };
 
@@ -44,6 +46,8 @@ export default function EditCampaignModal({
   const [startTime, setStartTime] = useState("");
   const [closeDate, setCloseDate] = useState("");
   const [closeTime, setCloseTime] = useState("");
+  const [pickupExpectedDate, setPickupExpectedDate] = useState("");
+  const [pickupExpectedTimeNote, setPickupExpectedTimeNote] = useState("");
   const [complexes, setComplexes] = useState<string[]>([""]);
   const [fulfillmentMode, setFulfillmentMode] = useState<"pickup_only" | "delivery_only" | "hybrid">(
     "hybrid"
@@ -84,6 +88,8 @@ export default function EditCampaignModal({
           setCloseDate(d.toISOString().slice(0, 10));
           setCloseTime(d.toTimeString().slice(0, 5));
         }
+        setPickupExpectedDate(c.pickup_expected_date || "");
+        setPickupExpectedTimeNote(c.pickup_expected_time_note || "");
         const names: string[] = (data.complexes || []).map((x: { name: string }) => x.name);
         setComplexes(names.length > 0 ? names : [""]);
         setFulfillmentMode(c.fulfillment_mode || "hybrid");
@@ -192,6 +198,8 @@ export default function EditCampaignModal({
         inquiryUrl,
         startAt,
         closeDeadline,
+        pickupExpectedDate: pickupExpectedDate || null,
+        pickupExpectedTimeNote: pickupExpectedTimeNote || null,
         complexes: validComplexes,
         products: products.map((p) => ({
           id: p.id || undefined,
@@ -260,6 +268,27 @@ export default function EditCampaignModal({
                 onChange={(e) => setCloseTime(e.target.value)}
               />
             </div>
+
+            <p className="text-[12px] text-neutral-500 mb-1.5">
+              예상 현장수령일 (선택 — 구매자에게 안내됩니다)
+            </p>
+            <div className="flex gap-2 mb-1.5">
+              <input
+                type="date"
+                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+                value={pickupExpectedDate}
+                onChange={(e) => setPickupExpectedDate(e.target.value)}
+              />
+              <input
+                className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
+                placeholder="시간대 (예: 오후 2시~6시)"
+                value={pickupExpectedTimeNote}
+                onChange={(e) => setPickupExpectedTimeNote(e.target.value)}
+              />
+            </div>
+            <p className="text-[11px] text-neutral-400 mb-3">
+              입고 상황에 따라 일정이 변동될 수 있다는 안내가 구매자 화면에 자동으로 함께 표시됩니다.
+            </p>
 
             <p className="text-[12px] text-neutral-500 mb-1.5">배송 가능한 아파트 단지</p>
             {fulfillmentMode === "pickup_only" ? (

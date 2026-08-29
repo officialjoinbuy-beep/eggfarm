@@ -17,7 +17,7 @@ export default async function PayPage({
 
   const { data: order } = await supabase
     .from("orders")
-    .select("total_amount, nickname")
+    .select("total_amount, nickname, phone")
     .eq("id", orderId)
     .single();
 
@@ -38,6 +38,8 @@ export default async function PayPage({
         accountHolder={campaign.account_holder}
         totalAmount={order.total_amount}
         timeoutMinutes={campaign.payment_timeout_minutes}
+        nickname={order.nickname}
+        phone={order.phone}
       />
     </main>
   );

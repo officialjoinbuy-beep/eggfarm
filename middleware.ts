@@ -8,6 +8,9 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        maxAge: 60 * 60 * 24 * 30, // 30일간 로그인 유지 (사파리 종료 시 재로그인 문제 방지)
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
