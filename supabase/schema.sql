@@ -16,7 +16,7 @@ create table public.campaigns (
   account_number text not null,
   account_holder text not null,
   inquiry_url text, -- 오픈채팅 1:1 문의 링크
-  payment_timeout_minutes int not null default 120, -- 입금확인 대기 시간(분)
+  payment_timeout_minutes int not null default 30, -- 입금확인 대기 시간(분)
   data_retention_days int not null default 15, -- 배송완료 후 개인정보 보유기간
   is_closed boolean not null default false,
   closed_at timestamptz,
@@ -645,7 +645,7 @@ begin
     case when p_payment_method = '현장결제' then '수령대기' else null end,
     encode(gen_random_bytes(16), 'hex'),
     v_total,
-    case when p_payment_method = '현장결제' then '입금확인완료' else '입금확인대기' end,
+    case when p_payment_method = '현장결제' then '입금확인완료' else '입금확인대기' end::payment_status,
     case when p_payment_method = '현장결제' then null
          else now() + (p_payment_timeout_minutes || ' minutes')::interval end,
     true
@@ -1470,7 +1470,7 @@ begin
     case when p_payment_method = '현장결제' then '수령대기' else null end,
     encode(gen_random_bytes(16), 'hex'),
     v_total,
-    case when p_payment_method = '현장결제' then '입금확인완료' else '입금확인대기' end,
+    case when p_payment_method = '현장결제' then '입금확인완료' else '입금확인대기' end::payment_status,
     case when p_payment_method = '현장결제' then null
          else now() + (p_payment_timeout_minutes || ' minutes')::interval end,
     true
@@ -1707,3 +1707,199 @@ as $$
     (al.campaigns_created_count = 0 and u.created_at < now() - interval '7 days')
     or (al.trial_exhausted_at is not null and al.trial_exhausted_at < now() - interval '15 days');
 $$;
+
+-- ------------------------------------------------------------
+-- v18. 노쇼 처리 시 결제방식별 매출 반영 분기
+-- ------------------------------------------------------------
+-- 현장결제(현장에서 결제하기로 했으나 노쇼로 실제 결제가 이뤄지지 않은 경우)는
+-- 매출에서 제외되도록 취소 처리(재고 반환+cancelled_at 기록)까지 함께 수행.
+-- 계좌이체(사전입금 후 노쇼)는 이미 입금받은 상태이므로 매출에 그대로 남긴다.
+create or replace function public.mark_pickup_noshow(p_order_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_from text;
+  v_payment_method text;
+  r record;
+begin
+  select pickup_status, payment_method into v_from, v_payment_method
+  from public.orders where id = p_order_id;
+
+  update public.orders
+  set pickup_status = '노쇼'
+  where id = p_order_id and pickup_status = '수령대기';
+
+  if v_payment_method = '현장결제' then
+    for r in
+      select oi.product_id, oi.quantity from public.order_items oi where oi.order_id = p_order_id
+    loop
+      perform public.release_stock(r.product_id, r.quantity);
+    end loop;
+
+    update public.orders
+    set cancelled_at = now()
+    where id = p_order_id and cancelled_at is null;
+  end if;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, coalesce(v_from, ''), '노쇼');
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- v18. 배송완료 매출 영구 기록 (공구/주문 삭제와 무관하게 보존)
+-- ------------------------------------------------------------
+create table public.delivery_revenue_log (
+  order_id uuid primary key, -- FK 없음: 주문이 삭제돼도 이 기록은 남아야 함
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  campaign_id uuid, -- FK 없음: 공구가 삭제돼도 이 기록은 남아야 함(참고용 id만 보관)
+  campaign_title text not null,
+  amount int not null,
+  completed_at timestamptz not null
+);
+
+alter table public.delivery_revenue_log enable row level security;
+
+create policy "owner_select_delivery_revenue_log" on public.delivery_revenue_log
+  for select using (auth.uid() = owner_id);
+
+-- 배송상태 변경 시(완료/완료취소) 매출 기록을 함께 관리하도록 확장
+create or replace function public.set_delivery_status_safe(p_order_id uuid, p_from delivery_status, p_to delivery_status)
+returns void
+language plpgsql
+as $$
+declare
+  v_owner_id uuid;
+  v_campaign_id uuid;
+  v_campaign_title text;
+  v_amount int;
+begin
+  update public.orders
+  set delivery_status = p_to,
+      delivery_completed_at = case when p_to = '배송완료' then now() else null end,
+      delivery_photo_url = case when p_to <> '배송완료' then null else delivery_photo_url end
+  where id = p_order_id and delivery_status = p_from;
+
+  if p_to = '배송완료' then
+    select o.campaign_id, o.total_amount, c.owner_id, c.title
+      into v_campaign_id, v_amount, v_owner_id, v_campaign_title
+      from public.orders o join public.campaigns c on c.id = o.campaign_id
+      where o.id = p_order_id;
+
+    insert into public.delivery_revenue_log (order_id, owner_id, campaign_id, campaign_title, amount, completed_at)
+    values (p_order_id, v_owner_id, v_campaign_id, v_campaign_title, v_amount, now())
+    on conflict (order_id) do update
+      set amount = excluded.amount, completed_at = excluded.completed_at;
+  elsif p_from = '배송완료' then
+    delete from public.delivery_revenue_log where order_id = p_order_id;
+  end if;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, p_from::text, p_to::text);
+end;
+$$;
+
+-- 기존에 이미 배송완료된 주문들을 소급 백필
+insert into public.delivery_revenue_log (order_id, owner_id, campaign_id, campaign_title, amount, completed_at)
+select o.id, c.owner_id, c.id, c.title, o.total_amount, coalesce(o.delivery_completed_at, now())
+from public.orders o
+join public.campaigns c on c.id = o.campaign_id
+where o.delivery_status = '배송완료'
+on conflict (order_id) do nothing;
+
+-- ------------------------------------------------------------
+-- v20. 입금확인대기 상태 주문을 판매자가 즉시 취소(자동취소를 기다리지 않고)
+-- ------------------------------------------------------------
+create or replace function public.cancel_unpaid_order(p_order_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_payment_status payment_status;
+  r record;
+begin
+  select payment_status into v_payment_status
+  from public.orders where id = p_order_id for update;
+
+  if v_payment_status is null then
+    raise exception 'ORDER_NOT_FOUND';
+  end if;
+  if v_payment_status <> '입금확인대기' then
+    raise exception 'NOT_CANCELLABLE';
+  end if;
+
+  for r in
+    select oi.product_id, oi.quantity from public.order_items oi where oi.order_id = p_order_id
+  loop
+    perform public.release_stock(r.product_id, r.quantity);
+  end loop;
+
+  update public.orders
+  set payment_status = '주문취소(미입금)',
+      payment_deadline = null
+  where id = p_order_id;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, '입금확인대기', '주문취소(미입금)');
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- v20. 이용현황 배너 재설계용 컬럼 + 크레딧 구매요청/증량이력 테이블
+-- ------------------------------------------------------------
+alter table public.account_limits
+  add column if not exists last_purchase_product_name text,
+  add column if not exists last_purchase_at timestamptz;
+
+create or replace function public.increase_campaign_limit(
+  p_owner_id uuid,
+  p_new_limit int,
+  p_product_name text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  update public.account_limits
+  set campaign_limit = p_new_limit,
+      trial_exhausted_at = null,
+      last_purchase_product_name = coalesce(p_product_name, last_purchase_product_name),
+      last_purchase_at = now()
+  where owner_id = p_owner_id;
+
+  insert into public.limit_increase_history (owner_id, previous_limit, new_limit, product_name)
+  select owner_id, campaign_limit, p_new_limit, p_product_name
+  from public.account_limits where owner_id = p_owner_id;
+end;
+$$;
+
+-- 한도 증량 이력(운영 콘솔에서 조회)
+create table if not exists public.limit_increase_history (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  previous_limit int,
+  new_limit int not null,
+  product_name text,
+  created_at timestamptz not null default now()
+);
+alter table public.limit_increase_history enable row level security;
+
+-- 크레딧 구매 요청 대기열(운영 콘솔에서 조회/처리)
+create table if not exists public.credit_purchase_requests (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  product_name text not null,
+  credit_amount int not null,
+  price int not null,
+  status text not null default '대기' check (status in ('대기', '완료')),
+  requested_at timestamptz not null default now(),
+  applied_at timestamptz
+);
+alter table public.credit_purchase_requests enable row level security;
+
+create policy "owner_select_credit_purchase_requests" on public.credit_purchase_requests
+  for select using (auth.uid() = owner_id);
+create policy "owner_insert_credit_purchase_requests" on public.credit_purchase_requests
+  for insert with check (auth.uid() = owner_id);

@@ -14,6 +14,7 @@ type OrderResult = {
   delivery_status: string;
   delivery_photo_url: string | null;
   created_at: string;
+  payment_deadline: string | null;
   bank_name: string | null;
   account_number: string | null;
   account_holder: string | null;
@@ -23,8 +24,6 @@ type OrderResult = {
   pickup_token: string | null;
   order_items: { product_name_snapshot: string; quantity: number }[];
 };
-
-const NUDGE_MINUTES = 30; // 고객에게 보여주는 안내용 마감(실제 자동취소 기준과 다름, 서둘러 입금하도록 유도)
 
 function PaymentPendingBanner({ order }: { order: OrderResult }) {
   const [now, setNow] = useState(() => Date.now());
@@ -43,19 +42,22 @@ function PaymentPendingBanner({ order }: { order: OrderResult }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const nudgeDeadline = new Date(order.created_at).getTime() + NUDGE_MINUTES * 60000;
-  const remainingMs = nudgeDeadline - now;
-  const withinNudge = remainingMs > 0;
-  const remainingMin = Math.floor(remainingMs / 60000);
-  const remainingSec = Math.floor((remainingMs % 60000) / 1000);
+  // 실제 자동취소 기준시간(payment_deadline)을 그대로 카운트다운에 사용.
+  // 마감이 지나면 실제 취소(cron, 최대 5분 주기)까지 잠깐의 지연이 있을 수 있어
+  // "곧 자동취소됩니다" 톤으로 안내한다.
+  const deadlineMs = order.payment_deadline ? new Date(order.payment_deadline).getTime() : null;
+  const remainingMs = deadlineMs !== null ? deadlineMs - now : null;
+  const withinDeadline = remainingMs !== null && remainingMs > 0;
+  const remainingMin = remainingMs !== null ? Math.floor(remainingMs / 60000) : 0;
+  const remainingSec = remainingMs !== null ? Math.floor((remainingMs % 60000) / 1000) : 0;
 
   return (
     <div className="bg-red-50 rounded-lg p-3 mb-3">
       <p className="text-[13px] text-red-600 font-medium mb-2">
-        입금이 확인되지 않았습니다{withinNudge && ` (${remainingMin}분 ${remainingSec}초 남음)`}
+        입금이 확인되지 않았습니다{withinDeadline && ` (${remainingMin}분 ${remainingSec}초 남음)`}
       </p>
-      {!withinNudge && (
-        <p className="text-[12px] text-red-600 mb-2">입금이 지연되고 있어요. 서둘러 입금해주세요.</p>
+      {!withinDeadline && (
+        <p className="text-[12px] text-red-600 mb-2">곧 자동취소됩니다. 서둘러 입금해주세요.</p>
       )}
       {order.account_number && (
         <button

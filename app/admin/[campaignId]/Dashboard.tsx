@@ -275,6 +275,18 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
     load();
   }
 
+  async function cancelUnpaidOrder(orderId: string) {
+    if (!confirm("이 주문을 즉시 취소할까요? (재고가 반환됩니다)")) return;
+    setActionLoading(true);
+    await fetch(`/api/admin/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cancel_unpaid_order" }),
+    });
+    setActionLoading(false);
+    load();
+  }
+
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -689,13 +701,22 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
               </div>
 
               {tab === "wait" && (
-                <button
-                  onClick={() => confirmPayment(o.id)}
-                  disabled={actionLoading}
-                  className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded flex-shrink-0 disabled:opacity-50"
-                >
-                  입금확인
-                </button>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => confirmPayment(o.id)}
+                    disabled={actionLoading}
+                    className="text-[12px] px-2.5 py-1.5 bg-neutral-900 text-white rounded disabled:opacity-50"
+                  >
+                    입금확인
+                  </button>
+                  <button
+                    onClick={() => cancelUnpaidOrder(o.id)}
+                    disabled={actionLoading}
+                    className="text-[12px] px-2.5 py-1.5 border border-red-200 text-red-500 rounded disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                </div>
               )}
               {(tab === "ready" || tab === "pickupWait") && !delegated && (
                 <button

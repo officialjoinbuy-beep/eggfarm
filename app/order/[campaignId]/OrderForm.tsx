@@ -370,8 +370,9 @@ export default function OrderForm({
               <input
                 className="w-20 border rounded px-3 py-2 text-sm text-center"
                 placeholder=""
+                inputMode="numeric"
                 value={dong}
-                onChange={(e) => setDong(e.target.value)}
+                onChange={(e) => setDong(e.target.value.replace(/[^0-9]/g, ""))}
               />
               <span className="text-sm">동</span>
               <input
@@ -380,6 +381,11 @@ export default function OrderForm({
                 inputMode="numeric"
                 value={unitNo}
                 onChange={(e) => setUnitNo(e.target.value.replace(/[^0-9]/g, ""))}
+                onBlur={() => {
+                  if (unitNo && unitNo.length > 0 && unitNo.length < 4) {
+                    setUnitNo(unitNo.padStart(4, "0"));
+                  }
+                }}
               />
               <span className="text-sm">호</span>
             </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import CampaignForm, { CampaignPrefill } from "@/components/CampaignForm";
 import AdminCalendar from "./AdminCalendar";
 import LimitReachedModal from "./LimitReachedModal";
+import Spinner from "@/components/Spinner";
 
 type Campaign = {
   id: string;
@@ -65,7 +66,10 @@ export default function CampaignListClient() {
     load();
   }, []);
 
+  const [navigatingId, setNavigatingId] = useState<string | null>(null);
+
   function goTo(id: string) {
+    setNavigatingId(id);
     router.push(`/admin/${id}`);
   }
 
@@ -183,9 +187,10 @@ export default function CampaignListClient() {
                 {upcoming.map((c) => (
                   <div
                     key={c.id}
-                    className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between"
+                    onClick={() => goTo(c.id)}
+                    className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between cursor-pointer active:opacity-70"
                   >
-                    <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
+                    <div className="text-left flex-1 min-w-0">
                       <p className="text-[13px] font-medium truncate">
                         {c.fulfillment_mode ? MODE_EMOJI[c.fulfillment_mode] + " " : ""}
                         {c.title}
@@ -199,8 +204,11 @@ export default function CampaignListClient() {
                         주문 {c.order_count}건
                         {c.start_at && ` · ${formatDeadline(c.start_at)} 시작 예정`}
                       </p>
-                    </button>
-                    <span className="text-[12px] text-neutral-400 flex-shrink-0 ml-2">보기 →</span>
+                    </div>
+                    <span className="text-[12px] text-neutral-400 flex-shrink-0 ml-2 flex items-center gap-1">
+                      {navigatingId === c.id && <Spinner className="w-3 h-3" />}
+                      보기 →
+                    </span>
                   </div>
                 ))}
               </div>
@@ -217,9 +225,10 @@ export default function CampaignListClient() {
             {active.map((c) => (
               <div
                 key={c.id}
-                className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between"
+                onClick={() => goTo(c.id)}
+                className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between cursor-pointer active:opacity-70"
               >
-                <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
+                <div className="text-left flex-1 min-w-0">
                   <p className="text-[13px] font-medium truncate">
                         {c.fulfillment_mode ? MODE_EMOJI[c.fulfillment_mode] + " " : ""}
                         {c.title}
@@ -233,8 +242,11 @@ export default function CampaignListClient() {
                     주문 {c.order_count}건
                     {c.close_deadline && ` · ${formatDeadline(c.close_deadline)} 마감`}
                   </p>
-                </button>
-                <span className="text-[12px] text-neutral-400 flex-shrink-0 ml-2">보기 →</span>
+                </div>
+                <span className="text-[12px] text-neutral-400 flex-shrink-0 ml-2 flex items-center gap-1">
+                  {navigatingId === c.id && <Spinner className="w-3 h-3" />}
+                  보기 →
+                </span>
               </div>
             ))}
           </div>
@@ -248,9 +260,10 @@ export default function CampaignListClient() {
                 {closed.map((c) => (
                   <div
                     key={c.id}
-                    className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between opacity-80"
+                    onClick={() => goTo(c.id)}
+                    className="bg-neutral-50 border rounded-lg p-3 flex items-center justify-between opacity-80 cursor-pointer active:opacity-60"
                   >
-                    <button onClick={() => goTo(c.id)} className="text-left flex-1 min-w-0">
+                    <div className="text-left flex-1 min-w-0">
                       <p className="text-[13px] font-medium truncate">
                         {c.fulfillment_mode ? MODE_EMOJI[c.fulfillment_mode] + " " : ""}
                         {c.title}
@@ -264,22 +277,31 @@ export default function CampaignListClient() {
                         주문 {c.order_count}건
                         {c.closed_at && ` · ${formatDeadline(c.closed_at)} 마감됨`}
                       </p>
-                    </button>
+                    </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                       <button
-                        onClick={() => regenerateFrom(c.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          regenerateFrom(c.id);
+                        }}
                         disabled={regenerating}
                         className="text-[11px] text-neutral-500 border rounded px-2 py-1 disabled:opacity-50"
                       >
                         재생성
                       </button>
                       <button
-                        onClick={() => setDeleteTarget(c)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(c);
+                        }}
                         className="text-[11px] text-red-500 border border-red-200 rounded px-2 py-1"
                       >
                         삭제
                       </button>
-                      <span className="text-[12px] text-neutral-400">보기 →</span>
+                      <span className="text-[12px] text-neutral-400 flex items-center gap-1">
+                        {navigatingId === c.id && <Spinner className="w-3 h-3" />}
+                        보기 →
+                      </span>
                     </div>
                   </div>
                 ))}

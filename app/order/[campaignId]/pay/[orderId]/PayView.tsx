@@ -73,8 +73,8 @@ export default function PayView({
           <span className="text-[12px] text-neutral-400">복사</span>
         </button>
         <p className="text-[11px] text-red-500 mt-1.5 font-medium">
-          위 이름을 복사해서 그대로 입금자명에 붙여넣어주세요. 이 이름으로만 입금확인이
-          가능합니다.
+          위 이름을 복사해서 그대로 입금자명에 붙여넣어주세요.
+          <br />이 이름으로만 입금확인이 가능합니다.
         </p>
       </div>
       {nameCopied && (

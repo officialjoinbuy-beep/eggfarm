@@ -2,10 +2,23 @@
 
 import { useEffect, useState } from "react";
 
-// 공구 생성 80회부터 잔여횟수 안내, 95회부터 경고색으로 전환.
-// 100회(한도) 도달 이후의 안내는 공구 생성 시도 시 뜨는 LimitReachedModal에서 처리한다.
+type Usage = {
+  used: number;
+  limit: number;
+  productName: string | null;
+  purchasedAt: string | null;
+};
+
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+}
+
+// 이용현황 배너: 항상 노출하고, 사용률만큼 빨간 막대가 차오르는 게이지로 표시.
 export default function TrialUsageBanner() {
-  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/account-limit")
@@ -14,23 +27,25 @@ export default function TrialUsageBanner() {
   }, []);
 
   if (!usage) return null;
-  const warnAt = Math.max(0, usage.limit - 20); // 기본 100회 기준 80부터
-  const dangerAt = Math.max(0, usage.limit - 5); // 기본 100회 기준 95부터
-  if (usage.used < warnAt) return null;
 
-  const remaining = Math.max(0, usage.limit - usage.used);
-  const danger = usage.used >= dangerAt;
+  const percent = usage.limit > 0 ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0;
+  const label = usage.productName || "체험판 크레딧";
+  const purchasedDate = formatDate(usage.purchasedAt);
 
   return (
-    <div
-      className={`flex items-center gap-2 rounded-lg px-3.5 py-2.5 mb-4 text-[13px] ${
-        danger ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
-      }`}
-    >
-      <span>{danger ? "⚠️" : "📊"}</span>
-      <span>
-        공구 생성 {usage.used}/{usage.limit}회 사용 중 — 잔여 {remaining}회
-      </span>
+    <div className="bg-neutral-50 rounded-lg px-3.5 py-3 mb-4">
+      <div className="flex items-center justify-between text-[12px] text-neutral-600 mb-1.5">
+        <span>
+          {label} ({usage.used}/{usage.limit} · {percent}%사용)
+        </span>
+        {purchasedDate && <span className="text-neutral-400">구매일자 {purchasedDate}</span>}
+      </div>
+      <div className="w-full h-2 bg-neutral-200 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-red-500 rounded-full transition-all"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
     </div>
   );
 }

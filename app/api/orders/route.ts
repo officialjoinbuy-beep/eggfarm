@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone } from "@/lib/format";
 import { hashPhoneForNoshow } from "@/lib/noshow-hash";
+import { encryptStaffField } from "@/lib/staff-crypto";
 
 // 구매자 주문접수. service_role로 create_order/create_pickup_order RPC를 호출한다.
 // 재고 확인 + 차감 + 주문 생성은 DB 함수 내부에서 하나의 트랜잭션으로 처리되므로
@@ -235,7 +236,7 @@ async function handleCreateOrder(req: NextRequest) {
       complex_name: complex.name,
       dong,
       unit_no: unitNoPadded,
-      entry_password: entryPassword || null,
+      entry_password: entryPassword ? encryptStaffField(entryPassword) : null,
     })
     .eq("id", orderId);
 

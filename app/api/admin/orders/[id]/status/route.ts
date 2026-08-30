@@ -121,6 +121,11 @@ export async function PATCH(
       rpcError = error;
       break;
     }
+    case "cancel_unpaid_order": {
+      const { error } = await supabase.rpc("cancel_unpaid_order", { p_order_id: id });
+      rpcError = error;
+      break;
+    }
     case "mark_refund_done": {
       const { error } = await supabase.rpc("mark_refund_completed", { p_order_id: id });
       rpcError = error;

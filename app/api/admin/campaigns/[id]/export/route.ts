@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/server";
 import { formatPhone, sortByDongUnitDesc } from "@/lib/format";
+import { decryptStaffField } from "@/lib/staff-crypto";
+
+// v20 이전에 평문으로 저장된 기존 데이터와의 호환을 위해, 복호화 실패 시 원본을 그대로 반환.
+function safeDecryptEntryPassword(value: string | null): string {
+  if (!value) return "";
+  try {
+    return decryptStaffField(value);
+  } catch {
+    return value;
+  }
+}
 
 export async function GET(
   _req: NextRequest,
@@ -54,7 +65,7 @@ export async function GET(
     단지명: o.complex_name || "",
     동: o.dong || "",
     호수: o.unit_no || "",
-    출입비밀번호: o.entry_password || "",
+    출입비밀번호: safeDecryptEntryPassword(o.entry_password),
     전체주소: o.address,
     주문상품: (o.order_items as any[])
       .map((i) => `${i.product_name_snapshot} x${i.quantity}`)

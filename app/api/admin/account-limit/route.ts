@@ -13,17 +13,19 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("account_limits")
-    .select("campaign_limit, campaigns_created_count")
+    .select("campaign_limit, campaigns_created_count, last_purchase_product_name, last_purchase_at")
     .eq("owner_id", user.id)
     .single();
 
   if (error || !data) {
     // 트리거로 항상 생성되지만, 혹시 없으면 기본값(0/10)으로 응답
-    return NextResponse.json({ used: 0, limit: 10 });
+    return NextResponse.json({ used: 0, limit: 10, productName: null, purchasedAt: null });
   }
 
   return NextResponse.json({
     used: data.campaigns_created_count,
     limit: data.campaign_limit,
+    productName: data.last_purchase_product_name,
+    purchasedAt: data.last_purchase_at,
   });
 }
