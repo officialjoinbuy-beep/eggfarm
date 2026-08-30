@@ -521,7 +521,9 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-neutral-50 border rounded-xl p-4">
           <p className="text-[13px] text-neutral-500 mb-1">총 주문</p>
-          <p className="text-[24px] font-medium">{orders.length}건</p>
+          <p className="text-[24px] font-medium">
+            {orders.filter((o) => o.payment_status !== "주문취소(미입금)").length}건
+          </p>
         </div>
         <div className="bg-neutral-50 border rounded-xl p-4">
           <p className="text-[13px] text-neutral-500 mb-1">현재 매출</p>
@@ -1149,7 +1151,7 @@ function CloseModal({
       <div className="bg-neutral-100 rounded-lg p-3 mb-4 text-[13px]">
         <div className="flex justify-between mb-1">
           <span className="text-neutral-500">총 주문건</span>
-          <span>{orders.length}건</span>
+          <span>{orders.filter((o) => o.payment_status !== "주문취소(미입금)").length}건</span>
         </div>
         <div className="flex justify-between mb-1">
           <span className="text-neutral-500">입금확인대기</span>

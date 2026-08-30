@@ -25,7 +25,8 @@ export default function PayView({
 }) {
   const [copied, setCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
-  const hours = Math.round(timeoutMinutes / 60);
+  const timeoutLabel =
+    timeoutMinutes % 60 === 0 ? `${timeoutMinutes / 60}시간` : `${timeoutMinutes}분`;
   const suggestedDepositorName = normalizePhone(phone).replace(/^010/, "");
 
   async function copyAccount() {
@@ -73,8 +74,7 @@ export default function PayView({
           <span className="text-[12px] text-neutral-400">복사</span>
         </button>
         <p className="text-[11px] text-red-500 mt-1.5 font-medium">
-          위 이름을 복사해서 그대로 입금자명에 붙여넣어주세요.
-          <br />이 이름으로만 입금확인이 가능합니다.
+          위 내용을 복사해서 입금자명에 붙여넣어 입금해주세요.
         </p>
       </div>
       {nameCopied && (
@@ -85,7 +85,7 @@ export default function PayView({
 
       <div className="mt-4 bg-red-50 rounded-lg p-3 text-left">
         <p className="text-[13px] text-red-600 font-medium">
-          {hours}시간 내 위 계좌로 입금해주세요.
+          {timeoutLabel} 내 위 계좌로 입금해주세요.
         </p>
         <p className="text-[13px] text-red-600 mt-1">
           입금이 확인되지 않으면 주문이 자동 취소됩니다.

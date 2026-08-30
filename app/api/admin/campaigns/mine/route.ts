@@ -31,7 +31,8 @@ export async function GET() {
       const { count } = await supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
-        .eq("campaign_id", c.id);
+        .eq("campaign_id", c.id)
+        .neq("payment_status", "주문취소(미입금)");
       return { ...c, order_count: count ?? 0, stale_pickup_count: staleCountByCampaign[c.id] ?? 0 };
     })
   );

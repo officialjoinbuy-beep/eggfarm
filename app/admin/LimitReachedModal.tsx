@@ -65,7 +65,9 @@ export default function LimitReachedModal({
                   key={p.name}
                   onClick={() => setSelected(p)}
                   className={`w-full border rounded-lg px-3 py-2.5 flex items-center justify-between text-left ${
-                    selected?.name === p.name ? "border-neutral-900 bg-neutral-50" : ""
+                    selected?.name === p.name
+                      ? "border-neutral-900 bg-neutral-50"
+                      : "border-neutral-200"
                   }`}
                 >
                   <span className="text-[14px] font-medium">{p.name}</span>
@@ -85,9 +87,9 @@ export default function LimitReachedModal({
                 href={supportChatUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full text-center text-[12px] text-neutral-400 py-1"
+                className="block w-full text-center text-[12px] text-neutral-500 underline underline-offset-2 py-1"
               >
-                또는 오픈채팅으로 문의하기
+                또는 오픈채팅으로 문의하기 →
               </a>
             )}
             <button onClick={onClose} className="w-full border rounded-lg py-2.5 text-sm mt-1">
@@ -121,7 +123,7 @@ export default function LimitReachedModal({
             <p className="text-[11px] text-neutral-400 mb-4 text-center leading-relaxed">
               입금 확인 후 GitHub/Vercel/Supabase 재초대를 통해 한도를 늘려드립니다.
               <br />
-              입금자명에 가입하신 이메일 아이디를 남겨주세요.
+              입금하실 분 성명을 입금자명에 그대로 넣어주세요.
             </p>
             <button
               onClick={submitRequest}

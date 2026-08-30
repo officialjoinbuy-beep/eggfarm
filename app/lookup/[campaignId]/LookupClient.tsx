@@ -262,11 +262,17 @@ export default function LookupClient({
               </div>
               <p
                 className={`text-[11px] text-right mt-1 ${
-                  o.payment_status === "입금확인완료" ? "text-green-600" : "text-amber-600"
+                  o.payment_status === "입금확인완료"
+                    ? "text-green-600"
+                    : o.payment_status === "주문취소(미입금)"
+                    ? "text-neutral-400"
+                    : "text-amber-600"
                 }`}
               >
                 {o.payment_status === "입금확인완료"
                   ? "결제완료"
+                  : o.payment_status === "주문취소(미입금)"
+                  ? "취소됨"
                   : o.payment_method === "현장결제"
                   ? "현장에서 결제 예정"
                   : "입금 확인 중"}

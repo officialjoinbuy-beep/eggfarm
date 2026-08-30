@@ -29,14 +29,17 @@ export default function TrialUsageBanner() {
   if (!usage) return null;
 
   const percent = usage.limit > 0 ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0;
-  const label = usage.productName || "체험판 크레딧";
+  const remaining = Math.max(0, usage.limit - usage.used);
   const purchasedDate = formatDate(usage.purchasedAt);
 
   return (
     <div className="bg-neutral-50 rounded-lg px-3.5 py-3 mb-4">
       <div className="flex items-center justify-between text-[12px] text-neutral-600 mb-1.5">
         <span>
-          {label} ({usage.used}/{usage.limit} · {percent}%사용)
+          {remaining}회 남음 ({usage.used}/{usage.limit} · {percent}%사용)
+          {usage.productName && (
+            <span className="text-neutral-400"> · {usage.productName} 구매</span>
+          )}
         </span>
         {purchasedDate && <span className="text-neutral-400">구매일자 {purchasedDate}</span>}
       </div>
