@@ -42,18 +42,39 @@ export async function GET(req: NextRequest) {
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
   const adminSupabase = createAdminClient();
-  const { error: updateError } = await adminSupabase
+  const { data: updatedRows, error: updateError } = await adminSupabase
     .from("account_limits")
     .update({
       kakao_access_token: tokens.access_token,
       kakao_refresh_token: tokens.refresh_token,
       kakao_token_expires_at: expiresAt,
     })
-    .eq("owner_id", user.id);
+    .eq("owner_id", user.id)
+    .select();
 
   if (updateError) {
-    console.error("카카오 토큰 저장 실패:", updateError);
+    console.error("카카오 토큰 저장 실패(에러):", updateError, "user.id:", user.id);
     return NextResponse.redirect(`${origin}/admin?kakao=error`);
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    // account_limits 행이 아직 없는 경우(트리거 지연 등) 직접 upsert로 생성까지 보장한다.
+    console.error(
+      "카카오 토큰 저장 실패(대상 행 없음) - upsert로 재시도. user.id:",
+      user.id
+    );
+    const { error: upsertError } = await adminSupabase.from("account_limits").upsert(
+      {
+        owner_id: user.id,
+        kakao_access_token: tokens.access_token,
+        kakao_refresh_token: tokens.refresh_token,
+        kakao_token_expires_at: expiresAt,
+      },
+      { onConflict: "owner_id" }
+    );
+    if (upsertError) {
+      console.error("카카오 토큰 upsert도 실패:", upsertError);
+      return NextResponse.redirect(`${origin}/admin?kakao=error`);
+    }
   }
 
   return NextResponse.redirect(`${origin}/admin?kakao=connected`);
