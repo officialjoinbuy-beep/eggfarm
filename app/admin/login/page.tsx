@@ -28,7 +28,7 @@ export default function LoginPage() {
   return (
     <main className="max-w-md mx-auto p-5">
       <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
-        <p className="text-[16px] font-medium mb-1">진행자 로그인</p>
+        <p className="text-[16px] font-medium mb-1">로그인</p>
         <p className="text-[13px] text-neutral-500 mb-5">공동구매 관리 대시보드</p>
 
         <div className="flex flex-col gap-2.5 text-left mb-3.5">

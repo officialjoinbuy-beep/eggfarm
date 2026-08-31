@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     closeDeadline?: string; // ISO datetime string, optional
     pickupExpectedDate?: string; // YYYY-MM-DD, optional
     pickupExpectedTimeNote?: string; // 자유입력 텍스트, optional
-    complexes: string[];
+    complexes: (string | { name: string; address?: string | null; kakaoPlaceId?: string | null })[];
     fulfillmentMode?: "pickup_only" | "delivery_only" | "hybrid";
     deliveryFee?: number;
     products: {
@@ -57,7 +57,13 @@ export async function POST(req: NextRequest) {
   }
   const mode: "pickup_only" | "delivery_only" | "hybrid" =
     fulfillmentMode === "pickup_only" || fulfillmentMode === "delivery_only" ? fulfillmentMode : "hybrid";
-  const validComplexes = (complexes || []).map((c) => c.trim()).filter(Boolean);
+  const validComplexes = (complexes || [])
+    .map((c) => (typeof c === "string" ? { name: c.trim(), address: null, kakaoPlaceId: null } : {
+      name: (c.name ?? "").trim(),
+      address: c.address ?? null,
+      kakaoPlaceId: c.kakaoPlaceId ?? null,
+    }))
+    .filter((c) => c.name);
   if (mode !== "pickup_only" && validComplexes.length === 0) {
     return NextResponse.json(
       { error: "배송 가능한 아파트 단지를 1개 이상 등록해주세요." },
@@ -126,9 +132,11 @@ export async function POST(req: NextRequest) {
   }
 
   const { error: complexesError } = await supabase.from("campaign_complexes").insert(
-    validComplexes.map((name, idx) => ({
+    validComplexes.map((c, idx) => ({
       campaign_id: campaign.id,
-      name,
+      name: c.name,
+      road_address: c.address,
+      kakao_place_id: c.kakaoPlaceId,
       display_order: idx,
     }))
   );

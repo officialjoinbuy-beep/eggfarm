@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isConsoleAuthed } from "@/lib/console-auth";
+import { getGa4VisitorCounts } from "@/lib/ga4";
 
 export async function GET() {
   if (!(await isConsoleAuthed())) {
@@ -43,6 +44,8 @@ export async function GET() {
     .gte("created_at", sevenDaysAgo.toISOString());
   const activeUsers = new Set((recentCampaigns ?? []).map((c) => c.owner_id)).size;
 
+  const ga4 = await getGa4VisitorCounts(); // 환경변수 없으면 null - 콘솔에서 "연동 전"으로 표시
+
   return NextResponse.json({
     todaySignups,
     weekSignups,
@@ -53,5 +56,7 @@ export async function GET() {
     totalRevenue,
     activeUsers,
     purgeSoonCount,
+    ga4TodayVisitors: ga4?.today ?? null,
+    ga4WeekVisitors: ga4?.last7Days ?? null,
   });
 }

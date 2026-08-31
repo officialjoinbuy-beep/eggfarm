@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatAccountNumber, formatNumberWithCommas, formatPickupTimeNote, next15Min } from "@/lib/format";
 import Spinner from "@/components/Spinner";
 import TimeSelect from "@/components/TimeSelect";
+import ComplexSearchInput from "@/components/ComplexSearchInput";
 
 type ProductInput = {
   name: string;
@@ -75,6 +76,12 @@ export default function CampaignForm({
   const [complexes, setComplexes] = useState<string[]>(
     prefill && prefill.complexes.length > 0 ? prefill.complexes : [""]
   );
+  const [complexMeta, setComplexMeta] = useState<{ address: string | null; kakaoPlaceId: string | null }[]>(
+    (prefill && prefill.complexes.length > 0 ? prefill.complexes : [""]).map(() => ({
+      address: null,
+      kakaoPlaceId: null,
+    }))
+  );
   const [bankName, setBankName] = useState(prefill?.bankName ?? "");
   const [accountNumberDisplay, setAccountNumberDisplay] = useState(
     prefill ? formatAccountNumber(prefill.accountNumber) : ""
@@ -90,6 +97,7 @@ export default function CampaignForm({
   const [pickupToTime, setPickupToTime] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmNoDeadline, setConfirmNoDeadline] = useState(false);
 
   function updateProduct(idx: number, field: keyof ProductInput, value: string | boolean) {
     setProducts((prev) =>
@@ -102,16 +110,24 @@ export default function CampaignForm({
     setProducts((prev) => [...prev, { ...emptyProduct }]);
   }
 
-  function updateComplex(idx: number, value: string) {
-    setComplexes((prev) => prev.map((c, i) => (i === idx ? value : c)));
+  function updateComplex(
+    idx: number,
+    value: { name: string; address: string | null; kakaoPlaceId: string | null }
+  ) {
+    setComplexes((prev) => prev.map((c, i) => (i === idx ? value.name : c)));
+    setComplexMeta((prev) =>
+      prev.map((m, i) => (i === idx ? { address: value.address, kakaoPlaceId: value.kakaoPlaceId } : m))
+    );
   }
 
   function addComplex() {
     setComplexes((prev) => [...prev, ""]);
+    setComplexMeta((prev) => [...prev, { address: null, kakaoPlaceId: null }]);
   }
 
   function removeComplex(idx: number) {
     setComplexes((prev) => prev.filter((_, i) => i !== idx));
+    setComplexMeta((prev) => prev.filter((_, i) => i !== idx));
   }
 
   async function handleImageSelect(idx: number, file: File | null) {
@@ -132,7 +148,9 @@ export default function CampaignForm({
     updateProduct(idx, "imageUrl", data.url);
   }
 
-  async function submit() {
+  // 유효성 검사 통과 후 마감일시가 비어있으면 실수인지 한 번 확인받고,
+  // 확인됐거나 이미 마감일시가 있으면 바로 등록 진행.
+  function submit() {
     setError(null);
     if (!title || !bankName || !accountNumberDisplay || !accountHolder) {
       setError("필수 항목을 입력해주세요.");
@@ -143,12 +161,31 @@ export default function CampaignForm({
       setError("배송 가능한 아파트 단지를 1개 이상 등록해주세요.");
       return;
     }
+    if (!closeDate && !closeTime) {
+      setConfirmNoDeadline(true);
+      return;
+    }
+    if ((closeDate && !closeTime) || (!closeDate && closeTime)) {
+      setError("마감 날짜와 시간을 모두 입력해주세요.");
+      return;
+    }
+    doSubmit();
+  }
+
+  async function doSubmit() {
+    setError(null);
+    setConfirmNoDeadline(false);
+    const validComplexEntries = complexes
+      .map((name, idx) => ({
+        name: name.trim(),
+        address: complexMeta[idx]?.address ?? null,
+        kakaoPlaceId: complexMeta[idx]?.kakaoPlaceId ?? null,
+      }))
+      .filter((c) => c.name);
+
     let closeDeadline: string | undefined;
     if (closeDate && closeTime) {
       closeDeadline = new Date(`${closeDate}T${closeTime}:00`).toISOString();
-    } else if (closeDate || closeTime) {
-      setError("마감 날짜와 시간을 모두 입력해주세요.");
-      return;
     }
 
     let startAt: string | undefined;
@@ -179,7 +216,7 @@ export default function CampaignForm({
             : undefined,
         fulfillmentMode,
         deliveryFee: fulfillmentMode === "pickup_only" ? 0 : Number(deliveryFee.replace(/[^0-9]/g, "")) || 0,
-        complexes: fulfillmentMode === "pickup_only" ? [] : validComplexes,
+        complexes: fulfillmentMode === "pickup_only" ? [] : validComplexEntries,
         products: products.map((p) => ({
           name: p.name,
           price: Number(p.price.replace(/[^0-9]/g, "")),
@@ -291,17 +328,16 @@ export default function CampaignForm({
           </p>
           <div className="flex flex-col gap-2 mb-3">
             {complexes.map((c, idx) => (
-              <div key={idx} className="flex gap-2">
-                <input
-                  className="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm"
-                  placeholder="아파트 단지명"
-                  value={c}
-                  onChange={(e) => updateComplex(idx, e.target.value)}
+              <div key={idx} className="flex gap-2 items-start">
+                <ComplexSearchInput
+                  name={c}
+                  address={complexMeta[idx]?.address ?? null}
+                  onChange={(v) => updateComplex(idx, v)}
                 />
                 {complexes.length > 1 && (
                   <button
                     onClick={() => removeComplex(idx)}
-                    className="flex-shrink-0 w-8 border rounded text-neutral-400"
+                    className="flex-shrink-0 w-8 h-8 border rounded text-neutral-400"
                   >
                     ×
                   </button>
@@ -315,6 +351,9 @@ export default function CampaignForm({
               + 단지 추가
             </button>
           </div>
+          <p className="text-[11px] text-neutral-400 -mt-2 mb-3">
+            검색 결과에 원하는 단지가 없으면 이름을 그대로 입력해 수동 등록할 수 있어요.
+          </p>
 
           <p className="text-[12px] text-neutral-500 mb-1.5">
             문앞배송 배송비 (구매자 부담, 1건당 고정금액 - 기본 0원)
@@ -448,6 +487,34 @@ export default function CampaignForm({
           {submitting ? "생성 중..." : "만들기"}
         </button>
       </div>
+
+      {confirmNoDeadline && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm">
+            <p className="text-[15px] font-medium mb-2">마감일시 없이 등록하시겠어요?</p>
+            <p className="text-[13px] text-neutral-500 mb-5 leading-relaxed">
+              마감일시를 입력하지 않으면 자동으로 마감되지 않아요. 원하실 때
+              대시보드에서 직접 조기마감하시면 됩니다.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmNoDeadline(false)}
+                className="flex-1 border rounded-lg py-2.5 text-sm"
+              >
+                다시 입력할게요
+              </button>
+              <button
+                onClick={doSubmit}
+                disabled={submitting}
+                className="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50 flex items-center justify-center"
+              >
+                {submitting && <Spinner />}
+                {submitting ? "생성 중..." : "그대로 등록"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

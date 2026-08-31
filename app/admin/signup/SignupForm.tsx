@@ -101,7 +101,7 @@ export default function SignupForm() {
   return (
     <main className="max-w-md mx-auto p-5">
       <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
-        <p className="text-[16px] font-medium mb-5">진행자 회원가입</p>
+        <p className="text-[16px] font-medium mb-5">회원가입</p>
         {repeatDeviceWarning && (
           <p className="text-[12px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3.5 text-left">
             ⚠️ 이 기기에서 이미 체험 가입 이력이 확인됩니다. 이미 체험해보셨다면 결제를 통해
@@ -138,6 +138,12 @@ export default function SignupForm() {
         </div>
         {error && <p className="text-[13px] text-red-600 mb-2">{error}</p>}
         <div className="flex gap-2">
+          <Link
+            href="/"
+            className="flex-1 border rounded-lg py-2.5 text-sm font-medium flex items-center justify-center"
+          >
+            취소
+          </Link>
           <button
             onClick={signup}
             disabled={loading}
@@ -146,13 +152,13 @@ export default function SignupForm() {
             {loading && <Spinner />}
             {loading ? "가입 중..." : "회원가입"}
           </button>
-          <Link
-            href="/admin/login"
-            className="flex-1 border rounded-lg py-2.5 text-sm font-medium flex items-center justify-center"
-          >
+        </div>
+        <p className="text-[12px] text-neutral-400 mt-3.5">
+          이미 회원이라면{" "}
+          <Link href="/admin/login" className="underline text-neutral-500">
             로그인
           </Link>
-        </div>
+        </p>
       </div>
     </main>
   );

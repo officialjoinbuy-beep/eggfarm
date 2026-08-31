@@ -9,6 +9,7 @@ import StaffLinkManager from "@/components/StaffLinkManager";
 import QrScanModal from "@/components/QrScanModal";
 import SignaturePad from "@/components/SignaturePad";
 import Spinner from "@/components/Spinner";
+import BankCsvReconcile from "@/components/BankCsvReconcile";
 
 type Order = {
   id: string;
@@ -28,6 +29,7 @@ type Order = {
   on_site_paid: boolean;
   cancelled_at: string | null;
   refund_status: "환불대기" | "환불완료" | null;
+  created_at: string;
   order_items: { product_name_snapshot: string; quantity: number }[];
 };
 
@@ -51,7 +53,15 @@ function DeadlineCountdown({ closeDeadline, isClosed }: { closeDeadline: string 
     return () => clearInterval(t);
   }, [isClosed, closeDeadline]);
 
-  if (isClosed || !closeDeadline) return null;
+  if (isClosed) return null;
+
+  if (!closeDeadline) {
+    return (
+      <div className="bg-neutral-50 rounded-lg px-3.5 py-2.5 mb-3 text-[13px] text-neutral-500">
+        마감기한 없음 · 원하실 때 직접 조기마감해주세요
+      </div>
+    );
+  }
 
   const deadlineMs = new Date(closeDeadline).getTime();
   const remainingMs = deadlineMs - now;
@@ -685,6 +695,16 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
                     </span>
                   )}
                 {tab === "wait" && (
+                  <span className="text-[11px] text-neutral-500 block">
+                    {formatWon(o.total_amount)} ·{" "}
+                    {new Date(o.created_at).toLocaleTimeString("ko-KR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    접수
+                  </span>
+                )}
+                {tab === "wait" && (
                   <span className="text-[11px] text-amber-600">
                     {(() => {
                       const m = minutesLeft(o.payment_deadline);
@@ -850,6 +870,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           )}
         </>
       )}
+      <BankCsvReconcile campaignId={campaignId} onConfirmed={load} />
       <a
         href={`/api/admin/campaigns/${campaignId}/export`}
         className="block w-full mt-2 text-center border rounded-lg py-2.5 text-sm"

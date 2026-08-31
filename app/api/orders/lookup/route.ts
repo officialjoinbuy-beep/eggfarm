@@ -52,10 +52,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "일치하는 주문을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  // 입금대기 안내에 필요한 계좌정보 조회
+  // 입금대기 안내 및 공지배너에 필요한 정보 조회
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("bank_name, account_number, account_holder")
+    .select("bank_name, account_number, account_holder, notice_text")
     .eq("id", campaignId)
     .single();
 
@@ -78,5 +78,5 @@ export async function POST(req: NextRequest) {
       };
     })
   );
-  return NextResponse.json({ orders: safe });
+  return NextResponse.json({ orders: safe, noticeText: campaign?.notice_text ?? null });
 }

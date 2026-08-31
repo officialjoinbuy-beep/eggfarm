@@ -17,16 +17,23 @@ export default function KakaoConnectBanner() {
   if (connected !== false || dismissed) return null;
 
   return (
-    <div className="flex items-center justify-between bg-yellow-50 rounded-lg px-3.5 py-2.5 mb-4 text-[12px]">
-      <span>💬 새 주문 접수 시 카톡으로 바로 알림받으세요</span>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <a href="/api/kakao/authorize" className="underline font-medium">
-          연결하기
-        </a>
-        <button onClick={() => setDismissed(true)} className="text-neutral-400">
-          ✕
-        </button>
+    <div className="bg-yellow-50 rounded-lg px-3.5 py-2.5 mb-4 text-[12px]">
+      <div className="flex items-center justify-between">
+        <span>💬 새 주문 접수 시 카톡으로 바로 알림받으세요</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <a href="/api/kakao/authorize" className="underline font-medium">
+            연결하기
+          </a>
+          <button onClick={() => setDismissed(true)} className="text-neutral-400">
+            ✕
+          </button>
+        </div>
       </div>
+      <p className="text-neutral-500 mt-1.5 leading-relaxed">
+        연결 화면에서 <strong className="text-neutral-700">"카카오톡 메시지 전송"</strong> 항목을
+        꼭 체크해주세요. 체크 안 하면 알림이 오지 않아요. (알림이 안 온다면 연결하기를 다시 눌러
+        재연결해보세요)
+      </p>
     </div>
   );
 }

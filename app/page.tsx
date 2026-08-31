@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AutoCarousel from "@/components/AutoCarousel";
 
 const PROBLEMS = [
   {
@@ -42,16 +43,23 @@ const TIERS = [
   { name: "하이브리드형", desc: "QR수령 + 배송관리 전체 기능", featured: false },
 ];
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ ref?: string }>;
+}) {
+  const { ref } = await searchParams;
+  const signupHref = ref ? `/admin/signup?ref=${encodeURIComponent(ref)}` : "/admin/signup";
+
   return (
-    <main className="max-w-2xl mx-auto px-5">
+    <main>
       {/* 히어로 */}
-      <section className="text-center pt-16 pb-14">
+      <section className="max-w-2xl mx-auto px-5 text-center pt-16 pb-14">
         <p className="text-[13px] text-neutral-400 mb-2">오더모아 OrderMoa</p>
         <h1 className="text-[26px] sm:text-[30px] font-medium leading-snug mb-3">
-          오픈채팅 수기취합,
+          공동구매 주문취합,
           <br />
-          이제 그만하세요
+          오픈채팅 수기취합은 이제 그만
         </h1>
         <p className="text-[15px] text-neutral-500 max-w-sm mx-auto mb-7 leading-relaxed">
           링크 하나로 주문 받고, 자동으로 집계까지.
@@ -59,7 +67,7 @@ export default function Home() {
           공동구매 진행자를 위한 가장 쉬운 주문관리 도구예요.
         </p>
         <Link
-          href="/admin/signup"
+          href={signupHref}
           className="inline-block bg-neutral-900 text-white rounded-lg px-7 py-3 text-[15px] font-medium"
         >
           10회 무료체험하기
@@ -67,26 +75,29 @@ export default function Home() {
       </section>
 
       {/* 문제 제기 */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-14">
-        {PROBLEMS.map((p) => (
-          <div key={p.title} className="bg-neutral-50 rounded-xl p-5 text-center">
-            <p className="text-[22px] mb-2">{p.icon}</p>
-            <p className="text-[14px] font-medium mb-1">{p.title}</p>
-            <p className="text-[13px] text-neutral-500 leading-relaxed">{p.desc}</p>
+      <section className="bg-amber-50/60 border-y border-amber-100">
+        <div className="max-w-2xl mx-auto px-5 py-14">
+          <AutoCarousel items={PROBLEMS} variant="plain" />
+          <div className="hidden sm:grid grid-cols-3 gap-3">
+            {PROBLEMS.map((p) => (
+              <div key={p.title} className="bg-white rounded-xl p-5 text-center">
+                <p className="text-[22px] mb-2">{p.icon}</p>
+                <p className="text-[14px] font-medium mb-1">{p.title}</p>
+                <p className="text-[13px] text-neutral-500 leading-relaxed">{p.desc}</p>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </section>
 
       {/* 기능 소개 */}
-      <section className="pb-14">
+      <section className="max-w-2xl mx-auto px-5 py-14">
         <p className="text-[13px] text-neutral-400 text-center mb-1">오더모아가 해결해드려요</p>
         <h2 className="text-[20px] font-medium text-center mb-6">필요한 기능, 이미 다 있어요</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <AutoCarousel items={FEATURES} variant="bordered" />
+        <div className="hidden sm:grid grid-cols-3 gap-3">
           {FEATURES.map((f) => (
-            <div
-              key={f.title}
-              className="bg-white border border-neutral-200 rounded-xl p-5"
-            >
+            <div key={f.title} className="bg-white border border-neutral-200 rounded-xl p-5">
               <p className="text-[20px] mb-2">{f.icon}</p>
               <p className="text-[14px] font-medium mb-1">{f.title}</p>
               <p className="text-[13px] text-neutral-500 leading-relaxed">{f.desc}</p>
@@ -96,46 +107,46 @@ export default function Home() {
       </section>
 
       {/* 요금제 - 가격은 노출하지 않고 등급만 소개 */}
-      <section className="pb-14">
-        <p className="text-[13px] text-neutral-400 text-center mb-1">이용 안내</p>
-        <h2 className="text-[20px] font-medium text-center mb-2">필요한 만큼 골라 쓰세요</h2>
-        <p className="text-[14px] text-neutral-500 text-center mb-7 leading-relaxed">
-          가입하면 10회까지 모든 기능을 무료로 체험할 수 있어요.
-          <br />
-          이후 이용 등급은 체험해보신 뒤 안내해드려요.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
-          {TIERS.map((t) => (
-            <div
-              key={t.name}
-              className={`relative bg-white rounded-xl p-5 text-center ${
-                t.featured
-                  ? "border-2 border-neutral-900"
-                  : "border border-neutral-200"
-              }`}
+      <section className="bg-neutral-900 text-white">
+        <div className="max-w-2xl mx-auto px-5 py-14">
+          <p className="text-[13px] text-neutral-400 text-center mb-1">이용 안내</p>
+          <h2 className="text-[20px] font-medium text-center mb-2">필요한 만큼 골라 쓰세요</h2>
+          <p className="text-[14px] text-neutral-400 text-center mb-7 leading-relaxed">
+            가입하면 10회까지 모든 기능을 무료로 체험할 수 있어요.
+            <br />
+            이후 이용 등급은 체험해보신 뒤 안내해드려요.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+            {TIERS.map((t) => (
+              <div
+                key={t.name}
+                className={`relative bg-neutral-800 rounded-xl p-5 text-center ${
+                  t.featured ? "border-2 border-amber-400" : "border border-neutral-700"
+                }`}
+              >
+                {t.featured && (
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-amber-400 text-neutral-900 text-[11px] px-2.5 py-0.5 rounded whitespace-nowrap font-medium">
+                    가장 많이 선택
+                  </span>
+                )}
+                <p className="text-[14px] font-medium mb-1.5 mt-1">{t.name}</p>
+                <p className="text-[12px] text-neutral-400 leading-relaxed">{t.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center">
+            <Link
+              href={signupHref}
+              className="inline-block bg-amber-400 text-neutral-900 rounded-lg px-7 py-3 text-[15px] font-medium"
             >
-              {t.featured && (
-                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-neutral-900 text-white text-[11px] px-2.5 py-0.5 rounded whitespace-nowrap">
-                  가장 많이 선택
-                </span>
-              )}
-              <p className="text-[14px] font-medium mb-1.5 mt-1">{t.name}</p>
-              <p className="text-[12px] text-neutral-500 leading-relaxed">{t.desc}</p>
-            </div>
-          ))}
-        </div>
-        <div className="text-center">
-          <Link
-            href="/admin/signup"
-            className="inline-block bg-neutral-900 text-white rounded-lg px-7 py-3 text-[15px] font-medium"
-          >
-            무료로 체험해보기
-          </Link>
-          <p className="text-[12px] text-neutral-400 mt-3">신용카드 등록 없이 바로 시작</p>
+              무료로 체험해보기
+            </Link>
+            <p className="text-[12px] text-neutral-500 mt-3">신용카드 등록 없이 바로 시작</p>
+          </div>
         </div>
       </section>
 
-      <footer className="text-center pb-10">
+      <footer className="text-center py-10">
         <Link href="/admin/login" className="text-[13px] text-neutral-400 underline">
           이미 계정이 있으신가요? 로그인
         </Link>

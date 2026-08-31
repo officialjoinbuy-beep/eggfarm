@@ -17,6 +17,7 @@ type CampaignDetail = {
   pickup_expected_date: string | null;
   pickup_expected_time_note: string | null;
   fulfillment_mode: "pickup_only" | "delivery_only" | "hybrid";
+  notice_text: string | null;
 };
 
 type ProductDetail = {
@@ -44,6 +45,7 @@ export default function EditCampaignModal({
   const [accountNumberDisplay, setAccountNumberDisplay] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
   const [inquiryUrl, setInquiryUrl] = useState("");
+  const [noticeText, setNoticeText] = useState("");
   const [startDate, setStartDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [closeDate, setCloseDate] = useState("");
@@ -82,6 +84,7 @@ export default function EditCampaignModal({
         setAccountNumberDisplay(formatAccountNumber(c.account_number));
         setAccountHolder(c.account_holder);
         setInquiryUrl(c.inquiry_url || "");
+        setNoticeText(c.notice_text || "");
         if (c.start_at) {
           const sd = new Date(c.start_at);
           setStartDate(sd.toISOString().slice(0, 10));
@@ -200,6 +203,7 @@ export default function EditCampaignModal({
         accountNumber: accountNumberDisplay,
         accountHolder,
         inquiryUrl,
+        noticeText: noticeText.trim() || null,
         startAt,
         closeDeadline,
         pickupExpectedDate: fulfillmentMode !== "delivery_only" ? pickupExpectedDate || null : null,
@@ -431,6 +435,17 @@ export default function EditCampaignModal({
               placeholder="오픈채팅 1:1 문의 링크"
               value={inquiryUrl}
               onChange={(e) => setInquiryUrl(e.target.value)}
+            />
+
+            <p className="text-[12px] text-neutral-500 mb-1.5">
+              공지문구 (선택, 구매자 주문조회 화면 상단에 노출돼요)
+            </p>
+            <textarea
+              className="w-full border rounded px-3 py-2 text-sm mb-3"
+              placeholder="예: 배송이 하루 지연됩니다. 양해 부탁드려요."
+              rows={2}
+              value={noticeText}
+              onChange={(e) => setNoticeText(e.target.value)}
             />
 
             {error && <p className="text-[13px] text-red-600 mb-3">{error}</p>}

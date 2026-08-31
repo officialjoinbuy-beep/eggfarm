@@ -226,6 +226,7 @@ export default function LookupClient({
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [orders, setOrders] = useState<OrderResult[] | null>(null);
+  const [noticeText, setNoticeText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function search() {
@@ -244,6 +245,7 @@ export default function LookupClient({
         return;
       }
       setOrders(data.orders);
+      setNoticeText(data.noticeText ?? null);
     } catch {
       setError("네트워크 오류가 발생했습니다.");
     }
@@ -254,6 +256,11 @@ export default function LookupClient({
     return (
       <main className="max-w-md mx-auto p-5 flex flex-col gap-3">
         <BuyerNav campaignId={campaignId} active="lookup" />
+        {noticeText && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800 whitespace-pre-wrap">
+            📢 {noticeText}
+          </div>
+        )}
         {orders.map((o) => (
           <div
             key={o.id}
