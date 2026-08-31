@@ -9,14 +9,24 @@ export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin;
   const redirectUri = `${origin}/api/kakao/callback`;
 
+  console.log("[kakao callback] 시작. code 존재:", !!code, "state:", state);
+
   if (!code) {
+    console.error("[kakao callback] code 파라미터 없음");
     return NextResponse.redirect(`${origin}/admin?kakao=error`);
   }
 
   let tokens;
   try {
     tokens = await exchangeKakaoCode(code, redirectUri);
-  } catch {
+    console.log(
+      "[kakao callback] 토큰 교환 성공. access_token 존재:",
+      !!tokens.access_token,
+      "refresh_token 존재:",
+      !!tokens.refresh_token
+    );
+  } catch (e) {
+    console.error("[kakao callback] 토큰 교환 실패:", e);
     return NextResponse.redirect(`${origin}/admin?kakao=error`);
   }
 
@@ -36,7 +46,9 @@ export async function GET(req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  console.log("[kakao callback] 로그인 세션 user.id:", user?.id ?? "없음");
   if (!user) {
+    console.error("[kakao callback] 로그인 세션이 없어 로그인 페이지로 이동");
     return NextResponse.redirect(`${origin}/admin/login`);
   }
 
@@ -52,30 +64,43 @@ export async function GET(req: NextRequest) {
     .eq("owner_id", user.id)
     .select();
 
+  console.log(
+    "[kakao callback] update 결과. 영향받은 행 수:",
+    updatedRows?.length ?? 0,
+    "에러:",
+    updateError ? JSON.stringify(updateError) : "없음"
+  );
+
   if (updateError) {
-    console.error("카카오 토큰 저장 실패(에러):", updateError, "user.id:", user.id);
+    console.error("[kakao callback] 토큰 저장 실패(에러):", updateError, "user.id:", user.id);
     return NextResponse.redirect(`${origin}/admin?kakao=error`);
   }
   if (!updatedRows || updatedRows.length === 0) {
-    // account_limits 행이 아직 없는 경우(트리거 지연 등) 직접 upsert로 생성까지 보장한다.
-    console.error(
-      "카카오 토큰 저장 실패(대상 행 없음) - upsert로 재시도. user.id:",
-      user.id
-    );
-    const { error: upsertError } = await adminSupabase.from("account_limits").upsert(
-      {
-        owner_id: user.id,
-        kakao_access_token: tokens.access_token,
-        kakao_refresh_token: tokens.refresh_token,
-        kakao_token_expires_at: expiresAt,
-      },
-      { onConflict: "owner_id" }
+    console.error("[kakao callback] 대상 행 없음 - upsert로 재시도. user.id:", user.id);
+    const { data: upsertData, error: upsertError } = await adminSupabase
+      .from("account_limits")
+      .upsert(
+        {
+          owner_id: user.id,
+          kakao_access_token: tokens.access_token,
+          kakao_refresh_token: tokens.refresh_token,
+          kakao_token_expires_at: expiresAt,
+        },
+        { onConflict: "owner_id" }
+      )
+      .select();
+    console.log(
+      "[kakao callback] upsert 결과:",
+      upsertData ? JSON.stringify(upsertData) : "없음",
+      "에러:",
+      upsertError ? JSON.stringify(upsertError) : "없음"
     );
     if (upsertError) {
-      console.error("카카오 토큰 upsert도 실패:", upsertError);
+      console.error("[kakao callback] 토큰 upsert도 실패:", upsertError);
       return NextResponse.redirect(`${origin}/admin?kakao=error`);
     }
   }
 
+  console.log("[kakao callback] 최종 성공. /admin?kakao=connected로 이동");
   return NextResponse.redirect(`${origin}/admin?kakao=connected`);
 }
