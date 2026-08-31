@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, nickname, phone, pin_hash, address, total_amount, payment_status, delivery_status, delivery_photo_url, delivery_completed_at, fulfillment_type, payment_method, pickup_status, pickup_token, campaign_id, created_at, payment_deadline, order_items(product_name_snapshot, quantity, unit_price)"
+      "id, nickname, phone, pin_hash, address, total_amount, payment_status, delivery_status, delivery_photo_url, delivery_completed_at, fulfillment_type, payment_method, pickup_status, pickup_token, campaign_id, created_at, payment_deadline, cancel_reason, order_items(product_name_snapshot, quantity, unit_price)"
     )
     .eq("campaign_id", campaignId)
     .eq("phone", normalizedPhone);

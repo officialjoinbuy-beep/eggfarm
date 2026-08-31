@@ -33,6 +33,17 @@ type HistoryRow = {
   product_name: string | null;
   created_at: string;
 };
+type Summary = {
+  todaySignups: number;
+  weekSignups: number;
+  totalSignups: number;
+  exhaustedCount: number;
+  pendingCount: number;
+  monthRevenue: number;
+  totalRevenue: number;
+  activeUsers: number;
+  purgeSoonCount: number;
+};
 
 function fmt(iso: string | null) {
   if (!iso) return "-";
@@ -46,17 +57,24 @@ export default function ConsoleClient() {
   const [signups, setSignups] = useState<Signup[]>([]);
   const [requests, setRequests] = useState<PurchaseRequest[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [applyingId, setApplyingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const res = await fetch("/api/console/data");
+    const [res, summaryRes] = await Promise.all([
+      fetch("/api/console/data"),
+      fetch("/api/console/summary"),
+    ]);
     if (res.ok) {
       const data = await res.json();
       setSignups(data.signups);
       setRequests(data.requests);
       setHistory(data.history);
+    }
+    if (summaryRes.ok) {
+      setSummary(await summaryRes.json());
     }
     setLoading(false);
   }
@@ -77,11 +95,79 @@ export default function ConsoleClient() {
     load();
   }
 
+  async function revertRequest(id: string) {
+    if (!confirm("적용을 되돌릴까요? 한도가 이전 값으로 복원되고 요청이 다시 대기 상태가 됩니다.")) return;
+    setApplyingId(id);
+    const res = await fetch("/api/console/revert-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId: id }),
+    });
+    setApplyingId(null);
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "되돌리기에 실패했습니다.");
+    }
+    load();
+  }
+
   const pendingRequests = requests.filter((r) => r.status === "대기");
 
   return (
     <div>
       <p className="text-[18px] font-medium mb-4">운영 콘솔</p>
+
+      {summary && (
+        <div className="mb-6">
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">가입 현황</p>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">오늘 가입</p>
+              <p className="text-[17px] font-medium">{summary.todaySignups}</p>
+            </div>
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">이번주 가입</p>
+              <p className="text-[17px] font-medium">{summary.weekSignups}</p>
+            </div>
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">누적 가입자</p>
+              <p className="text-[17px] font-medium">{summary.totalSignups}</p>
+            </div>
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">체험 소진</p>
+              <p className="text-[17px] font-medium">{summary.exhaustedCount}</p>
+            </div>
+          </div>
+
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">구매 현황</p>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="bg-amber-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-amber-700 mb-1">처리 대기중</p>
+              <p className="text-[17px] font-medium text-amber-700">{summary.pendingCount}건</p>
+            </div>
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">이번달 매출</p>
+              <p className="text-[17px] font-medium">{summary.monthRevenue.toLocaleString()}원</p>
+            </div>
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">누적 매출</p>
+              <p className="text-[17px] font-medium">{summary.totalRevenue.toLocaleString()}원</p>
+            </div>
+          </div>
+
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">활동 지표</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">최근 7일 활성 사용자</p>
+              <p className="text-[17px] font-medium">{summary.activeUsers}명</p>
+            </div>
+            <div className="bg-neutral-50 rounded-lg p-2.5">
+              <p className="text-[11px] text-neutral-500 mb-1">자동삭제 예정</p>
+              <p className="text-[17px] font-medium">{summary.purgeSoonCount}명</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex border-b mb-4 text-[13px]">
         {[
@@ -132,6 +218,16 @@ export default function ConsoleClient() {
                 >
                   {applyingId === r.id && <Spinner className="w-3 h-3" />}
                   입금확인됨 - 한도 적용
+                </button>
+              )}
+              {r.status === "완료" && (
+                <button
+                  onClick={() => revertRequest(r.id)}
+                  disabled={applyingId === r.id}
+                  className="mt-2 w-full border border-red-200 text-red-500 rounded-lg py-2 text-[12px] disabled:opacity-50 flex items-center justify-center"
+                >
+                  {applyingId === r.id && <Spinner className="w-3 h-3" />}
+                  되돌리기
                 </button>
               )}
             </div>

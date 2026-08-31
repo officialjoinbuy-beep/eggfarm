@@ -1903,3 +1903,242 @@ create policy "owner_select_credit_purchase_requests" on public.credit_purchase_
   for select using (auth.uid() = owner_id);
 create policy "owner_insert_credit_purchase_requests" on public.credit_purchase_requests
   for insert with check (auth.uid() = owner_id);
+
+-- ------------------------------------------------------------
+-- v22. 전화번호/추천코드/카카오알림/취소사유/콘솔이력 확장
+-- ------------------------------------------------------------
+alter table public.account_limits
+  add column if not exists owner_phone text, -- 회원가입 시 입력받는 연락처(구매요청 알림용)
+  add column if not exists referral_code text unique, -- 본인 추천코드(친구소개용)
+  add column if not exists referred_by uuid references auth.users(id), -- 누구에게 추천받아 가입했는지
+  add column if not exists referral_rewarded boolean not null default false, -- 추천인에게 이미 보상 지급했는지(중복지급 방지)
+  add column if not exists kakao_access_token text,
+  add column if not exists kakao_refresh_token text,
+  add column if not exists kakao_token_expires_at timestamptz;
+
+-- 가입 시 추천코드 자동 발급 (owner_id 앞 8자리 기반, 충돌시 재시도는 애플리케이션에서 처리)
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.account_limits (owner_id, referral_code)
+  values (new.id, substr(replace(new.id::text, '-', ''), 1, 8))
+  on conflict (owner_id) do nothing;
+  return new;
+end;
+$$;
+
+-- 공구 생성 시 원자적으로 한도 체크 + 카운트 증가. 첫 공구 생성이면 추천보상도 함께 지급.
+create or replace function public.increment_campaign_count(p_owner_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_limit int;
+  v_count int;
+  v_referred_by uuid;
+  v_rewarded boolean;
+  v_referrer_limit int;
+begin
+  select campaign_limit, campaigns_created_count, referred_by, referral_rewarded
+    into v_limit, v_count, v_referred_by, v_rewarded
+  from public.account_limits
+  where owner_id = p_owner_id
+  for update;
+
+  if v_limit is null then
+    insert into public.account_limits (owner_id) values (p_owner_id)
+    on conflict (owner_id) do nothing;
+    v_limit := 10;
+    v_count := 0;
+  end if;
+
+  if v_count >= v_limit then
+    raise exception 'CAMPAIGN_LIMIT_REACHED';
+  end if;
+
+  update public.account_limits
+  set campaigns_created_count = v_count + 1,
+      trial_exhausted_at = case when v_count + 1 >= v_limit then now() else trial_exhausted_at end
+  where owner_id = p_owner_id;
+
+  -- 첫 공구 생성이고, 추천받은 사람이며, 아직 보상 안 받았으면 추천인에게 3회 자동지급
+  if v_count = 0 and v_referred_by is not null and not v_rewarded then
+    select campaign_limit into v_referrer_limit
+    from public.account_limits where owner_id = v_referred_by for update;
+
+    if v_referrer_limit is not null then
+      update public.account_limits
+      set campaign_limit = v_referrer_limit + 3
+      where owner_id = v_referred_by;
+
+      insert into public.limit_increase_history (owner_id, previous_limit, new_limit, product_name)
+      values (v_referred_by, v_referrer_limit, v_referrer_limit + 3, '친구소개 보상(3회)');
+
+      update public.account_limits set referral_rewarded = true where owner_id = p_owner_id;
+
+      insert into public.referral_rewards (referrer_id, referred_id, credits)
+      values (v_referred_by, p_owner_id, 3);
+    end if;
+  end if;
+end;
+$$;
+
+create table if not exists public.referral_rewards (
+  id uuid primary key default gen_random_uuid(),
+  referrer_id uuid not null references auth.users(id) on delete cascade,
+  referred_id uuid not null references auth.users(id) on delete cascade,
+  credits int not null,
+  created_at timestamptz not null default now()
+);
+alter table public.referral_rewards enable row level security;
+create policy "owner_select_referral_rewards" on public.referral_rewards
+  for select using (auth.uid() = referrer_id);
+
+-- 주문 취소 사유 구분(자동취소/판매자취소/노쇼취소/결제후취소) - 주문조회 화면 표시용
+alter table public.orders
+  add column if not exists cancel_reason text; -- 'auto_unpaid' | 'seller_cancelled' | 'noshow_onsite' | 'refund'
+
+create or replace function public.cancel_unpaid_order(p_order_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_payment_status payment_status;
+  r record;
+begin
+  select payment_status into v_payment_status
+  from public.orders where id = p_order_id for update;
+
+  if v_payment_status is null then
+    raise exception 'ORDER_NOT_FOUND';
+  end if;
+  if v_payment_status <> '입금확인대기' then
+    raise exception 'NOT_CANCELLABLE';
+  end if;
+
+  for r in
+    select oi.product_id, oi.quantity from public.order_items oi where oi.order_id = p_order_id
+  loop
+    perform public.release_stock(r.product_id, r.quantity);
+  end loop;
+
+  update public.orders
+  set payment_status = '주문취소(미입금)',
+      payment_deadline = null,
+      cancel_reason = 'seller_cancelled'
+  where id = p_order_id;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, '입금확인대기', '주문취소(미입금)');
+end;
+$$;
+
+create or replace function public.auto_cancel_unpaid_orders()
+returns void
+language plpgsql
+as $$
+declare
+  r record;
+begin
+  for r in
+    select o.id as order_id, oi.product_id, oi.quantity
+    from public.orders o
+    join public.order_items oi on oi.order_id = o.id
+    where o.payment_status = '입금확인대기'
+      and o.payment_deadline < now()
+  loop
+    perform public.release_stock(r.product_id, r.quantity);
+  end loop;
+
+  update public.orders
+  set payment_status = '주문취소(미입금)',
+      cancel_reason = 'auto_unpaid'
+  where payment_status = '입금확인대기'
+    and payment_deadline < now();
+end;
+$$;
+
+create or replace function public.mark_pickup_noshow(p_order_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_from text;
+  v_payment_method text;
+  r record;
+begin
+  select pickup_status, payment_method into v_from, v_payment_method
+  from public.orders where id = p_order_id;
+
+  update public.orders
+  set pickup_status = '노쇼'
+  where id = p_order_id and pickup_status = '수령대기';
+
+  if v_payment_method = '현장결제' then
+    for r in
+      select oi.product_id, oi.quantity from public.order_items oi where oi.order_id = p_order_id
+    loop
+      perform public.release_stock(r.product_id, r.quantity);
+    end loop;
+
+    update public.orders
+    set cancelled_at = now(),
+        cancel_reason = 'noshow_onsite'
+    where id = p_order_id and cancelled_at is null;
+  end if;
+
+  insert into public.order_status_logs (order_id, from_status, to_status)
+  values (p_order_id, coalesce(v_from, ''), '노쇼');
+end;
+$$;
+
+-- 콘솔 구매요청 되돌리기: 한도를 직전 값으로 복원 + 요청상태를 대기로 복귀
+alter table public.limit_increase_history
+  add column if not exists reverted boolean not null default false;
+
+create or replace function public.revert_credit_purchase(p_request_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  v_owner_id uuid;
+  v_status text;
+  v_history_id uuid;
+  v_previous_limit int;
+begin
+  select owner_id, status into v_owner_id, v_status
+  from public.credit_purchase_requests where id = p_request_id for update;
+
+  if v_owner_id is null then
+    raise exception 'REQUEST_NOT_FOUND';
+  end if;
+  if v_status <> '완료' then
+    raise exception 'NOT_APPLIED';
+  end if;
+
+  select id, previous_limit into v_history_id, v_previous_limit
+  from public.limit_increase_history
+  where owner_id = v_owner_id and reverted = false
+  order by created_at desc
+  limit 1;
+
+  if v_history_id is null then
+    raise exception 'HISTORY_NOT_FOUND';
+  end if;
+
+  update public.account_limits
+  set campaign_limit = coalesce(v_previous_limit, campaign_limit)
+  where owner_id = v_owner_id;
+
+  update public.limit_increase_history set reverted = true where id = v_history_id;
+
+  update public.credit_purchase_requests
+  set status = '대기', applied_at = null
+  where id = p_request_id;
+end;
+$$;

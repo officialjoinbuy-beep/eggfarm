@@ -8,6 +8,8 @@ import StaffManagementClient from "./StaffManagementClient";
 import NoshowManagementClient from "./NoshowManagementClient";
 import DelegationBanner from "./DelegationBanner";
 import TrialUsageBanner from "./TrialUsageBanner";
+import KakaoConnectBanner from "./KakaoConnectBanner";
+import ReferralShareCard from "./ReferralShareCard";
 
 export default function AdminHomeClient() {
   const router = useRouter();
@@ -31,6 +33,8 @@ export default function AdminHomeClient() {
 
       <DelegationBanner />
       <TrialUsageBanner />
+      <KakaoConnectBanner />
+      <ReferralShareCard />
 
       <div className="flex gap-1.5 mb-5 bg-neutral-100 rounded-lg p-1">
         <button

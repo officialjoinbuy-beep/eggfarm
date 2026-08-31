@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatPhone, formatWon, normalizePhone } from "@/lib/format";
 import Spinner from "@/components/Spinner";
+import PoweredByFooter from "@/components/PoweredByFooter";
 
 type Product = {
   id: string;
@@ -446,6 +447,7 @@ export default function OrderForm({
       <p className="text-[11px] text-red-500 mt-2 text-center font-medium">
         PIN은 나중에 주문조회 시 필요하니 꼭 기억해주세요
       </p>
+      <PoweredByFooter />
     </div>
   );
 }
