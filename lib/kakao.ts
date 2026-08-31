@@ -7,6 +7,7 @@ import "server-only";
 //   (예: https://ordermoa.kr/api/kakao/callback)
 
 const REST_API_KEY = process.env.KAKAO_REST_API_KEY || "";
+const CLIENT_SECRET = process.env.KAKAO_CLIENT_SECRET || "";
 
 export function getKakaoAuthorizeUrl(redirectUri: string, state: string) {
   const params = new URLSearchParams({
@@ -20,17 +21,23 @@ export function getKakaoAuthorizeUrl(redirectUri: string, state: string) {
 }
 
 export async function exchangeKakaoCode(code: string, redirectUri: string) {
+  const body: Record<string, string> = {
+    grant_type: "authorization_code",
+    client_id: REST_API_KEY,
+    redirect_uri: redirectUri,
+    code,
+  };
+  if (CLIENT_SECRET) body.client_secret = CLIENT_SECRET;
+
   const res = await fetch("https://kauth.kakao.com/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: REST_API_KEY,
-      redirect_uri: redirectUri,
-      code,
-    }),
+    body: new URLSearchParams(body),
   });
-  if (!res.ok) throw new Error("카카오 토큰 교환 실패");
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(`카카오 토큰 교환 실패 (${res.status}): ${errorBody}`);
+  }
   return (await res.json()) as {
     access_token: string;
     refresh_token: string;
@@ -39,16 +46,22 @@ export async function exchangeKakaoCode(code: string, redirectUri: string) {
 }
 
 export async function refreshKakaoToken(refreshToken: string) {
+  const body: Record<string, string> = {
+    grant_type: "refresh_token",
+    client_id: REST_API_KEY,
+    refresh_token: refreshToken,
+  };
+  if (CLIENT_SECRET) body.client_secret = CLIENT_SECRET;
+
   const res = await fetch("https://kauth.kakao.com/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: REST_API_KEY,
-      refresh_token: refreshToken,
-    }),
+    body: new URLSearchParams(body),
   });
-  if (!res.ok) throw new Error("카카오 토큰 갱신 실패");
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(`카카오 토큰 갱신 실패 (${res.status}): ${errorBody}`);
+  }
   return (await res.json()) as { access_token: string; expires_in: number };
 }
 
