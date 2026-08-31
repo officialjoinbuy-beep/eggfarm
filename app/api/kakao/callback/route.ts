@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { exchangeKakaoCode } from "@/lib/kakao";
 
 export async function GET(req: NextRequest) {
@@ -40,7 +41,8 @@ export async function GET(req: NextRequest) {
   }
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-  await supabase
+  const adminSupabase = createAdminClient();
+  const { error: updateError } = await adminSupabase
     .from("account_limits")
     .update({
       kakao_access_token: tokens.access_token,
@@ -48,6 +50,11 @@ export async function GET(req: NextRequest) {
       kakao_token_expires_at: expiresAt,
     })
     .eq("owner_id", user.id);
+
+  if (updateError) {
+    console.error("카카오 토큰 저장 실패:", updateError);
+    return NextResponse.redirect(`${origin}/admin?kakao=error`);
+  }
 
   return NextResponse.redirect(`${origin}/admin?kakao=connected`);
 }
