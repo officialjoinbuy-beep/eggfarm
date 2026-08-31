@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import CampaignForm, { CampaignPrefill } from "@/components/CampaignForm";
 import AdminCalendar from "./AdminCalendar";
 import LimitReachedModal from "./LimitReachedModal";
@@ -136,12 +135,7 @@ export default function CampaignListClient() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[16px] font-semibold">내 공구 목록</p>
-        <Link href="/admin/reports" className="text-[12px] text-neutral-500 underline">
-          매출 리포트 →
-        </Link>
-      </div>
+      <p className="text-[16px] font-semibold mb-3">내 공구 목록</p>
 
       {showForm ? (
         <div className="mb-5">

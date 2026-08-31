@@ -57,7 +57,7 @@ function DeadlineCountdown({ closeDeadline, isClosed }: { closeDeadline: string 
 
   if (!closeDeadline) {
     return (
-      <div className="bg-neutral-50 rounded-lg px-3.5 py-2.5 mb-3 text-[13px] text-neutral-500">
+      <div className="bg-red-50 rounded-lg px-3.5 py-2.5 mb-3 text-[13px] text-red-600">
         마감기한 없음 · 원하실 때 직접 조기마감해주세요
       </div>
     );
@@ -695,8 +695,8 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
                     </span>
                   )}
                 {tab === "wait" && (
-                  <span className="text-[11px] text-neutral-500 block">
-                    {formatWon(o.total_amount)} ·{" "}
+                  <span className="text-[11px] text-red-600 font-medium block">
+                    총입금액 {formatWon(o.total_amount)} ·{" "}
                     {new Date(o.created_at).toLocaleTimeString("ko-KR", {
                       hour: "2-digit",
                       minute: "2-digit",

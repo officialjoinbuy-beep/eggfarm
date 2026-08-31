@@ -139,7 +139,7 @@ export default function AdminCalendar({
     <div className="mb-5">
       <div className="bg-neutral-50 border rounded-xl p-4 mb-3">
         <p className="text-[12px] text-neutral-500 mb-1">
-          {year}년 {month + 1}월 배송완료 매출
+          {year}년 {month + 1}월 완료 매출
         </p>
         <p className="text-[22px] font-semibold">{formatWon(monthRevenue)}</p>
         <p className="text-[11px] text-neutral-400 mt-0.5">배송완료 {monthDeliveredCount}건 기준</p>

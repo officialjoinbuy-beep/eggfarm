@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import CampaignListClient from "./CampaignListClient";
 import StaffManagementClient from "./StaffManagementClient";
@@ -61,6 +62,12 @@ export default function AdminHomeClient() {
         >
           노쇼 관리
         </button>
+        <Link
+          href="/admin/reports"
+          className="flex-1 text-[13px] py-2 rounded text-neutral-500 flex items-center justify-center"
+        >
+          매출 리포트
+        </Link>
       </div>
 
       {tab === "campaigns" && <CampaignListClient />}

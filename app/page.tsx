@@ -57,9 +57,9 @@ export default async function Home({
       <section className="max-w-2xl mx-auto px-5 text-center pt-16 pb-14">
         <p className="text-[13px] text-neutral-400 mb-2">오더모아 OrderMoa</p>
         <h1 className="text-[26px] sm:text-[30px] font-medium leading-snug mb-3">
-          공동구매 주문취합,
+          공동구매 오픈채팅 운영하면서
           <br />
-          오픈채팅 수기취합은 이제 그만
+          &apos;수기취합&apos;은 이제 그만
         </h1>
         <p className="text-[15px] text-neutral-500 max-w-sm mx-auto mb-7 leading-relaxed">
           링크 하나로 주문 받고, 자동으로 집계까지.

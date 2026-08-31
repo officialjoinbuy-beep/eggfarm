@@ -146,17 +146,17 @@ export default function SignupForm() {
           </Link>
           <button
             onClick={signup}
-            disabled={loading}
-            className="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50 flex items-center justify-center"
+            disabled={loading || !email || password.length < 8 || !phoneDisplay}
+            className="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 flex items-center justify-center"
           >
             {loading && <Spinner />}
             {loading ? "가입 중..." : "회원가입"}
           </button>
         </div>
         <p className="text-[12px] text-neutral-400 mt-3.5">
-          이미 회원이라면{" "}
+          이미 오더모아 계정이 있으신가요?{" "}
           <Link href="/admin/login" className="underline text-neutral-500">
-            로그인
+            로그인하기
           </Link>
         </p>
       </div>

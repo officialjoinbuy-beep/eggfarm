@@ -250,6 +250,7 @@ export default function CampaignForm({
         </p>
       )}
 
+      <p className="text-[12px] text-neutral-500 mb-1.5">공구 제목 *</p>
       <input
         className="w-full border rounded px-3 py-2 text-sm mb-3"
         placeholder="공구 제목"
@@ -324,7 +325,7 @@ export default function CampaignForm({
       {fulfillmentMode !== "pickup_only" && (
         <>
           <p className="text-[12px] text-neutral-500 mb-1.5">
-            배송 가능한 아파트 단지 (등록된 단지만 주문 가능)
+            배송 가능한 아파트 단지 * (등록된 단지만 주문 가능)
           </p>
           <div className="flex flex-col gap-2 mb-3">
             {complexes.map((c, idx) => (
@@ -368,7 +369,7 @@ export default function CampaignForm({
         </>
       )}
 
-      <p className="text-[12px] text-neutral-500 mb-1.5">상품 (최대 3개)</p>
+      <p className="text-[12px] text-neutral-500 mb-1.5">상품 (최대 3개) *</p>
       <div className="flex flex-col gap-2 mb-3">
         {products.map((p, idx) => (
           <div key={idx} className="border rounded-lg p-2.5">
@@ -438,7 +439,7 @@ export default function CampaignForm({
         )}
       </div>
 
-      <p className="text-[12px] text-neutral-500 mb-1.5">입금 계좌</p>
+      <p className="text-[12px] text-neutral-500 mb-1.5">입금 계좌 *</p>
       <div className="flex flex-col gap-2 mb-3">
         <input
           className="w-full border rounded px-3 py-2 text-sm"
