@@ -11,7 +11,8 @@ import { refreshKakaoToken, sendKakaoMemo } from "@/lib/kakao";
 async function notifyOwnerNewOrder(
   supabase: ReturnType<typeof createAdminClient>,
   campaignId: string,
-  orderId: string
+  orderId: string,
+  origin: string
 ) {
   try {
     const { data: campaign } = await supabase
@@ -37,7 +38,8 @@ async function notifyOwnerNewOrder(
     const { access_token } = await refreshKakaoToken(limits.kakao_refresh_token);
     await sendKakaoMemo(
       access_token,
-      `[${campaign.title}] 새 주문이 접수됐어요 (${(order?.total_amount ?? 0).toLocaleString()}원)`
+      `[${campaign.title}] 새 주문이 접수됐어요 (${(order?.total_amount ?? 0).toLocaleString()}원)`,
+      `${origin}/admin/${campaignId}`
     );
   } catch (e) {
     console.error("카카오 알림 발송 실패(무시하고 계속):", e);
@@ -207,7 +209,7 @@ async function handleCreateOrder(req: NextRequest) {
       }
       return NextResponse.json({ error: "주문 처리 중 오류가 발생했습니다." }, { status: 500 });
     }
-    await notifyOwnerNewOrder(supabase, campaignId, orderId);
+    await notifyOwnerNewOrder(supabase, campaignId, orderId, req.nextUrl.origin);
     return NextResponse.json({ orderId });
   }
 
@@ -280,6 +282,6 @@ async function handleCreateOrder(req: NextRequest) {
     })
     .eq("id", orderId);
 
-  await notifyOwnerNewOrder(supabase, campaignId, orderId);
+  await notifyOwnerNewOrder(supabase, campaignId, orderId, req.nextUrl.origin);
   return NextResponse.json({ orderId });
 }

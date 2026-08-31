@@ -65,12 +65,15 @@ export async function refreshKakaoToken(refreshToken: string) {
   return (await res.json()) as { access_token: string; expires_in: number };
 }
 
+const DEFAULT_APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://eggfarm-nine.vercel.app";
+
 // 카카오톡 "나에게 보내기"로 텍스트 메모 전송.
 export async function sendKakaoMemo(accessToken: string, text: string, linkUrl?: string) {
+  const url = linkUrl || DEFAULT_APP_URL;
   const templateObject = {
     object_type: "text",
     text,
-    link: { web_url: linkUrl || "https://ordermoa.kr", mobile_web_url: linkUrl || "https://ordermoa.kr" },
+    link: { web_url: url, mobile_web_url: url },
   };
   const res = await fetch("https://kapi.kakao.com/v2/api/talk/memo/default/send", {
     method: "POST",

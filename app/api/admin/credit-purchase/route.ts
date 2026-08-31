@@ -35,20 +35,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "요청 접수에 실패했습니다." }, { status: 500 });
   }
 
-  await notifyArinine(user.email || "알 수 없음", packageName as string, pkg.price);
+  await notifyArinine(user.email || "알 수 없음", packageName as string, pkg.price, req.nextUrl.origin);
 
   return NextResponse.json({ ok: true });
 }
 
 // 진행자(ARININE) 본인에게 구매요청 접수를 카카오로 알림. 실패해도 요청 접수 자체는 성공 처리.
-async function notifyArinine(email: string, packageName: string, price: number) {
+async function notifyArinine(email: string, packageName: string, price: number, origin: string) {
   const refreshToken = process.env.KAKAO_ADMIN_REFRESH_TOKEN;
   if (!refreshToken) return;
   try {
     const { access_token } = await refreshKakaoToken(refreshToken);
     await sendKakaoMemo(
       access_token,
-      `크레딧 구매요청 접수: ${email} · ${packageName} · ${price.toLocaleString()}원. 콘솔에서 확인해주세요.`
+      `크레딧 구매요청 접수: ${email} · ${packageName} · ${price.toLocaleString()}원. 콘솔에서 확인해주세요.`,
+      `${origin}/console`
     );
   } catch (e) {
     console.error("진행자 카카오 알림 발송 실패(무시하고 계속):", e);
