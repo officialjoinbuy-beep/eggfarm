@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatPhone, formatWon, normalizePhone } from "@/lib/format";
 import Spinner from "@/components/Spinner";
+import PoweredByFooter from "@/components/PoweredByFooter";
 
 type Product = {
   id: string;
@@ -412,7 +413,7 @@ export default function OrderForm({
           onChange={(e) => setAgreed(e.target.checked)}
         />
         <span>
-          [필수] 개인정보(닉네임, 연락처{fulfillmentType === "배송" ? ", 주소" : ""})는 공동구매
+          [필수] 개인정보(닉네임, 연락처{fulfillmentType === "배송" ? ", 주소" : ""} 등)는 공동구매
           주문처리{fulfillmentType === "배송" ? " 및 배송" : ""} 목적으로만 수집되며,{" "}
           {fulfillmentType === "배송" ? "배송완료" : "수령완료"} 후 15일 뒤 자동 폐기됩니다. 위
           수집·이용에 동의합니다.
@@ -446,6 +447,7 @@ export default function OrderForm({
       <p className="text-[11px] text-red-500 mt-2 text-center font-medium">
         PIN은 나중에 주문조회 시 필요하니 꼭 기억해주세요
       </p>
+      <PoweredByFooter />
     </div>
   );
 }

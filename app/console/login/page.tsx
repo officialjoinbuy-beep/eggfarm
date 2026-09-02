@@ -31,7 +31,7 @@ export default function ConsoleLoginPage() {
   return (
     <main className="max-w-md mx-auto p-5">
       <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
-        <p className="text-[16px] font-medium mb-5">운영 콘솔</p>
+        <p className="text-[16px] font-medium mb-5">ORDERMOA DASHBOARD</p>
         <input
           type="password"
           placeholder="비밀번호"

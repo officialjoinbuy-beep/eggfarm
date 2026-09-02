@@ -26,6 +26,17 @@ export function decryptStaffField(encoded: string): string {
   return decrypted.toString("utf8");
 }
 
+// 암호화 이전에 저장된 평문 데이터나, 다른 키로 암호화된 데이터를 만나면
+// decryptStaffField가 예외를 던진다. 화면 표시가 통째로 죽는 것보다는
+// 원본 값을 그대로 보여주는 게 낫기 때문에 안전하게 감싼 버전.
+export function safeDecryptStaffField(encoded: string): string {
+  try {
+    return decryptStaffField(encoded);
+  } catch {
+    return encoded;
+  }
+}
+
 // 화면 기본 표시용 마스킹 (예: 010-****-5678, 홍*동)
 export function maskPhone(phone: string): string {
   const d = phone.replace(/[^0-9]/g, "");

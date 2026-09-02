@@ -4,6 +4,47 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone } from "@/lib/format";
 import { hashPhoneForNoshow } from "@/lib/noshow-hash";
 import { encryptStaffField } from "@/lib/staff-crypto";
+import { refreshKakaoToken, sendKakaoMemo } from "@/lib/kakao";
+
+// 새 주문 접수 시 공구 진행자가 카카오 알림을 연결해뒀다면 본인 카톡으로 알림을 보낸다.
+// 실패해도 주문 처리 자체는 절대 막지 않는다(알림은 부가기능).
+async function notifyOwnerNewOrder(
+  supabase: ReturnType<typeof createAdminClient>,
+  campaignId: string,
+  orderId: string,
+  origin: string
+) {
+  try {
+    const { data: campaign } = await supabase
+      .from("campaigns")
+      .select("title, owner_id")
+      .eq("id", campaignId)
+      .single();
+    if (!campaign) return;
+
+    const { data: limits } = await supabase
+      .from("account_limits")
+      .select("kakao_refresh_token")
+      .eq("owner_id", campaign.owner_id)
+      .single();
+    if (!limits?.kakao_refresh_token) return;
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("total_amount")
+      .eq("id", orderId)
+      .single();
+
+    const { access_token } = await refreshKakaoToken(limits.kakao_refresh_token);
+    await sendKakaoMemo(
+      access_token,
+      `[${campaign.title}] 새 주문이 접수됐어요 (${(order?.total_amount ?? 0).toLocaleString()}원)`,
+      `${origin}/admin/${campaignId}`
+    );
+  } catch (e) {
+    console.error("카카오 알림 발송 실패(무시하고 계속):", e);
+  }
+}
 
 // 구매자 주문접수. service_role로 create_order/create_pickup_order RPC를 호출한다.
 // 재고 확인 + 차감 + 주문 생성은 DB 함수 내부에서 하나의 트랜잭션으로 처리되므로
@@ -168,6 +209,7 @@ async function handleCreateOrder(req: NextRequest) {
       }
       return NextResponse.json({ error: "주문 처리 중 오류가 발생했습니다." }, { status: 500 });
     }
+    await notifyOwnerNewOrder(supabase, campaignId, orderId, req.nextUrl.origin);
     return NextResponse.json({ orderId });
   }
 
@@ -240,5 +282,6 @@ async function handleCreateOrder(req: NextRequest) {
     })
     .eq("id", orderId);
 
+  await notifyOwnerNewOrder(supabase, campaignId, orderId, req.nextUrl.origin);
   return NextResponse.json({ orderId });
 }

@@ -6,6 +6,7 @@ import Spinner from "@/components/Spinner";
 type Signup = {
   owner_id: string;
   email: string;
+  phone: string | null;
   campaign_limit: number;
   campaigns_created_count: number;
   trial_exhausted_at: string | null;
@@ -17,6 +18,7 @@ type PurchaseRequest = {
   id: string;
   owner_id: string;
   email: string;
+  phone: string | null;
   product_name: string;
   credit_amount: number;
   price: number;
@@ -28,10 +30,24 @@ type HistoryRow = {
   id: string;
   owner_id: string;
   email: string;
+  phone: string | null;
   previous_limit: number | null;
   new_limit: number;
   product_name: string | null;
   created_at: string;
+};
+type Summary = {
+  todaySignups: number;
+  weekSignups: number;
+  totalSignups: number;
+  exhaustedCount: number;
+  pendingCount: number;
+  monthRevenue: number;
+  totalRevenue: number;
+  activeUsers: number;
+  purgeSoonCount: number;
+  ga4TodayVisitors: number | null;
+  ga4WeekVisitors: number | null;
 };
 
 function fmt(iso: string | null) {
@@ -46,17 +62,30 @@ export default function ConsoleClient() {
   const [signups, setSignups] = useState<Signup[]>([]);
   const [requests, setRequests] = useState<PurchaseRequest[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [quickFilter, setQuickFilter] = useState<
+    | null
+    | { tab: "signups"; kind: "today" | "week" | "exhausted" }
+    | { tab: "requests"; kind: "pending" | "month" | "all" }
+  >(null);
 
   async function load() {
     setLoading(true);
-    const res = await fetch("/api/console/data");
+    const [res, summaryRes] = await Promise.all([
+      fetch("/api/console/data"),
+      fetch("/api/console/summary"),
+    ]);
     if (res.ok) {
       const data = await res.json();
       setSignups(data.signups);
       setRequests(data.requests);
       setHistory(data.history);
+    }
+    if (summaryRes.ok) {
+      setSummary(await summaryRes.json());
     }
     setLoading(false);
   }
@@ -77,13 +106,170 @@ export default function ConsoleClient() {
     load();
   }
 
+  async function revertRequest(id: string) {
+    if (!confirm("적용을 되돌릴까요? 한도가 이전 값으로 복원되고 요청이 다시 대기 상태가 됩니다.")) return;
+    setApplyingId(id);
+    const res = await fetch("/api/console/revert-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId: id }),
+    });
+    setApplyingId(null);
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error || "되돌리기에 실패했습니다.");
+    }
+    load();
+  }
+
   const pendingRequests = requests.filter((r) => r.status === "대기");
+
+  function goToTab(next: typeof tab, filter: typeof quickFilter) {
+    setTab(next);
+    setQuickFilter(filter);
+    setSearch("");
+  }
+
+  const q = search.trim().replace(/[^0-9a-zA-Z가-힣@.-]/g, "").toLowerCase();
+  function matchesSearch<T extends { email: string; phone: string | null }>(row: T) {
+    if (!q) return true;
+    const emailMatch = row.email.toLowerCase().includes(q);
+    const phoneMatch = (row.phone ?? "").replace(/[^0-9]/g, "").includes(q.replace(/[^0-9]/g, ""));
+    return emailMatch || (q.replace(/[^0-9]/g, "").length >= 3 && phoneMatch);
+  }
+
+  const now = Date.now();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const visibleSignups = signups.filter((s) => {
+    if (!matchesSearch(s)) return false;
+    if (quickFilter?.tab === "signups") {
+      if (quickFilter.kind === "today") return new Date(s.created_at).getTime() >= startOfToday.getTime();
+      if (quickFilter.kind === "week") return new Date(s.created_at).getTime() >= weekAgo;
+      if (quickFilter.kind === "exhausted") return !!s.trial_exhausted_at;
+    }
+    return true;
+  });
+
+  const visibleRequests = requests.filter((r) => {
+    if (!matchesSearch(r)) return false;
+    if (quickFilter?.tab === "requests") {
+      if (quickFilter.kind === "pending") return r.status === "대기";
+      if (quickFilter.kind === "month")
+        return r.status === "완료" && !!r.applied_at && new Date(r.applied_at).getTime() >= startOfMonth.getTime();
+    }
+    return true;
+  });
+
+  const visibleHistory = history.filter((h) => matchesSearch(h));
 
   return (
     <div>
-      <p className="text-[18px] font-medium mb-4">운영 콘솔</p>
+      <p className="text-[18px] font-medium mb-4">ORDERMOA DASHBOARD</p>
 
-      <div className="flex border-b mb-4 text-[13px]">
+      {summary && (
+        <div className="mb-6">
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">가입 현황</p>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            <button
+              onClick={() => goToTab("signups", { tab: "signups", kind: "today" })}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">오늘 가입</p>
+              <p className="text-[17px] font-medium">{summary.todaySignups}</p>
+            </button>
+            <button
+              onClick={() => goToTab("signups", { tab: "signups", kind: "week" })}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">이번주 가입</p>
+              <p className="text-[17px] font-medium">{summary.weekSignups}</p>
+            </button>
+            <button
+              onClick={() => goToTab("signups", null)}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">누적 가입자</p>
+              <p className="text-[17px] font-medium">{summary.totalSignups}</p>
+            </button>
+            <button
+              onClick={() => goToTab("signups", { tab: "signups", kind: "exhausted" })}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">체험 소진</p>
+              <p className="text-[17px] font-medium">{summary.exhaustedCount}</p>
+            </button>
+          </div>
+
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">구매 현황</p>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <button
+              onClick={() => goToTab("requests", { tab: "requests", kind: "pending" })}
+              className="bg-amber-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-amber-700 mb-1">처리 대기중</p>
+              <p className="text-[17px] font-medium text-amber-700">{summary.pendingCount}건</p>
+            </button>
+            <button
+              onClick={() => goToTab("requests", { tab: "requests", kind: "month" })}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">이번달 매출</p>
+              <p className="text-[17px] font-medium">{summary.monthRevenue.toLocaleString()}원</p>
+            </button>
+            <button
+              onClick={() => goToTab("requests", { tab: "requests", kind: "all" })}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">누적 매출</p>
+              <p className="text-[17px] font-medium">{summary.totalRevenue.toLocaleString()}원</p>
+            </button>
+          </div>
+
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">활동 지표</p>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button
+              onClick={() => goToTab("signups", null)}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">최근 7일 활성 사용자</p>
+              <p className="text-[17px] font-medium">{summary.activeUsers}명</p>
+            </button>
+            <button
+              onClick={() => goToTab("signups", null)}
+              className="bg-neutral-50 rounded-lg p-2.5 text-left"
+            >
+              <p className="text-[11px] text-neutral-500 mb-1">자동삭제 예정</p>
+              <p className="text-[17px] font-medium">{summary.purgeSoonCount}명</p>
+            </button>
+          </div>
+
+          <p className="text-[12px] text-neutral-400 font-medium mb-2">방문자 (GA4)</p>
+          {summary.ga4WeekVisitors === null ? (
+            <p className="text-[12px] text-neutral-400 bg-neutral-50 rounded-lg p-2.5">
+              GA4 연동 전이에요. GA4_PROPERTY_ID, GA4_SERVICE_ACCOUNT_KEY 환경변수를 등록하면 여기 표시됩니다.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-neutral-50 rounded-lg p-2.5">
+                <p className="text-[11px] text-neutral-500 mb-1">오늘 방문자</p>
+                <p className="text-[17px] font-medium">{summary.ga4TodayVisitors}명</p>
+              </div>
+              <div className="bg-neutral-50 rounded-lg p-2.5">
+                <p className="text-[11px] text-neutral-500 mb-1">최근 7일 방문자</p>
+                <p className="text-[17px] font-medium">{summary.ga4WeekVisitors}명</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex border-b mb-3 text-[13px]">
         {[
           { key: "requests", label: `구매요청 (${pendingRequests.length})` },
           { key: "signups", label: `가입자 (${signups.length})` },
@@ -91,7 +277,10 @@ export default function ConsoleClient() {
         ].map((t) => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key as typeof tab)}
+            onClick={() => {
+              setTab(t.key as typeof tab);
+              setQuickFilter(null);
+            }}
             className={`px-3 py-2 -mb-px border-b-2 ${
               tab === t.key ? "border-neutral-900 font-medium" : "border-transparent text-neutral-400"
             }`}
@@ -101,14 +290,34 @@ export default function ConsoleClient() {
         ))}
       </div>
 
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setQuickFilter(null);
+          }}
+          placeholder="이메일 또는 전화번호로 검색"
+          className="flex-1 border rounded-lg px-3 py-2 text-[13px]"
+        />
+        {quickFilter && (
+          <button
+            onClick={() => setQuickFilter(null)}
+            className="text-[12px] text-neutral-400 border rounded-lg px-2.5 py-2 whitespace-nowrap"
+          >
+            필터 해제 ✕
+          </button>
+        )}
+      </div>
+
       {loading && <p className="text-[13px] text-neutral-400 py-6 text-center">불러오는 중...</p>}
 
       {!loading && tab === "requests" && (
         <div className="flex flex-col gap-2">
-          {requests.length === 0 && (
-            <p className="text-[13px] text-neutral-400 py-6 text-center">요청이 없습니다.</p>
+          {visibleRequests.length === 0 && (
+            <p className="text-[13px] text-neutral-400 py-6 text-center">해당하는 요청이 없습니다.</p>
           )}
-          {requests.map((r) => (
+          {visibleRequests.map((r) => (
             <div key={r.id} className="border rounded-lg p-3">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-[13px] font-medium">{r.email}</p>
@@ -134,6 +343,16 @@ export default function ConsoleClient() {
                   입금확인됨 - 한도 적용
                 </button>
               )}
+              {r.status === "완료" && (
+                <button
+                  onClick={() => revertRequest(r.id)}
+                  disabled={applyingId === r.id}
+                  className="mt-2 w-full border border-red-200 text-red-500 rounded-lg py-2 text-[12px] disabled:opacity-50 flex items-center justify-center"
+                >
+                  {applyingId === r.id && <Spinner className="w-3 h-3" />}
+                  되돌리기
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -141,9 +360,13 @@ export default function ConsoleClient() {
 
       {!loading && tab === "signups" && (
         <div className="flex flex-col gap-2">
-          {signups.map((s) => (
+          {visibleSignups.length === 0 && (
+            <p className="text-[13px] text-neutral-400 py-6 text-center">해당하는 가입자가 없습니다.</p>
+          )}
+          {visibleSignups.map((s) => (
             <div key={s.owner_id} className="border rounded-lg p-3">
               <p className="text-[13px] font-medium">{s.email}</p>
+              {s.phone && <p className="text-[11px] text-neutral-400">{s.phone}</p>}
               <p className="text-[12px] text-neutral-500">
                 {s.campaigns_created_count}/{s.campaign_limit}회 사용
                 {s.trial_exhausted_at && " · 체험 소진됨"}
@@ -159,10 +382,10 @@ export default function ConsoleClient() {
 
       {!loading && tab === "history" && (
         <div className="flex flex-col gap-2">
-          {history.length === 0 && (
-            <p className="text-[13px] text-neutral-400 py-6 text-center">이력이 없습니다.</p>
+          {visibleHistory.length === 0 && (
+            <p className="text-[13px] text-neutral-400 py-6 text-center">해당하는 이력이 없습니다.</p>
           )}
-          {history.map((h) => (
+          {visibleHistory.map((h) => (
             <div key={h.id} className="border rounded-lg p-3">
               <p className="text-[13px] font-medium">{h.email}</p>
               <p className="text-[12px] text-neutral-500">

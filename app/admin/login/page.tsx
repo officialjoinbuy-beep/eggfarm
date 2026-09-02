@@ -12,7 +12,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function login() {
+  async function login(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     setLoading(true);
     const supabase = createClient();
@@ -27,8 +28,11 @@ export default function LoginPage() {
 
   return (
     <main className="max-w-md mx-auto p-5">
-      <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
-        <p className="text-[16px] font-medium mb-1">진행자 로그인</p>
+      <form
+        onSubmit={login}
+        className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center"
+      >
+        <p className="text-[16px] font-medium mb-1">로그인</p>
         <p className="text-[13px] text-neutral-500 mb-5">공동구매 관리 대시보드</p>
 
         <div className="flex flex-col gap-2.5 text-left mb-3.5">
@@ -51,7 +55,7 @@ export default function LoginPage() {
         {error && <p className="text-[13px] text-red-600 mb-2">{error}</p>}
 
         <button
-          onClick={login}
+          type="submit"
           disabled={loading}
           className="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50 flex items-center justify-center"
         >
@@ -65,7 +69,12 @@ export default function LoginPage() {
             회원가입
           </a>
         </p>
-      </div>
+        <p className="text-[12px] text-neutral-400 mt-1.5">
+          <a href="/admin/forgot-password" className="underline">
+            비밀번호를 잊으셨나요?
+          </a>
+        </p>
+      </form>
     </main>
   );
 }

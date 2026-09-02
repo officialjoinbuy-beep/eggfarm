@@ -9,6 +9,10 @@ import StaffLinkManager from "@/components/StaffLinkManager";
 import QrScanModal from "@/components/QrScanModal";
 import SignaturePad from "@/components/SignaturePad";
 import Spinner from "@/components/Spinner";
+// 입금대조 CSV/엑셀 업로드(BankCsvReconcile)는 실제 은행 파일 형식 검증이
+// 더 필요해 대시보드 노출을 잠시 뺐다. 컴포넌트/API는 그대로 남겨뒀으니
+// 검증 끝나면 아래 두 줄만 다시 활성화하면 된다.
+// import BankCsvReconcile from "@/components/BankCsvReconcile";
 
 type Order = {
   id: string;
@@ -28,6 +32,7 @@ type Order = {
   on_site_paid: boolean;
   cancelled_at: string | null;
   refund_status: "환불대기" | "환불완료" | null;
+  created_at: string;
   order_items: { product_name_snapshot: string; quantity: number }[];
 };
 
@@ -51,7 +56,15 @@ function DeadlineCountdown({ closeDeadline, isClosed }: { closeDeadline: string 
     return () => clearInterval(t);
   }, [isClosed, closeDeadline]);
 
-  if (isClosed || !closeDeadline) return null;
+  if (isClosed) return null;
+
+  if (!closeDeadline) {
+    return (
+      <div className="bg-red-50 rounded-lg px-3.5 py-2.5 mb-3 text-[13px] text-red-600">
+        마감기한 없음 · 원하실 때 직접 조기마감해주세요
+      </div>
+    );
+  }
 
   const deadlineMs = new Date(closeDeadline).getTime();
   const remainingMs = deadlineMs - now;
@@ -522,7 +535,7 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
         <div className="bg-neutral-50 border rounded-xl p-4">
           <p className="text-[13px] text-neutral-500 mb-1">총 주문</p>
           <p className="text-[24px] font-medium">
-            {orders.filter((o) => o.payment_status !== "주문취소(미입금)").length}건
+            {orders.filter((o) => o.payment_status !== "주문취소(미입금)" && !o.cancelled_at).length}건
           </p>
         </div>
         <div className="bg-neutral-50 border rounded-xl p-4">
@@ -684,6 +697,16 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
                       같은 연락처 추가주문 있음 ({duplicatePhoneCount(o, byTab[tab])}건)
                     </span>
                   )}
+                {tab === "wait" && (
+                  <span className="text-[11px] text-red-600 font-medium block">
+                    총입금액 {formatWon(o.total_amount)} ·{" "}
+                    {new Date(o.created_at).toLocaleTimeString("ko-KR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    접수
+                  </span>
+                )}
                 {tab === "wait" && (
                   <span className="text-[11px] text-amber-600">
                     {(() => {
@@ -1151,7 +1174,7 @@ function CloseModal({
       <div className="bg-neutral-100 rounded-lg p-3 mb-4 text-[13px]">
         <div className="flex justify-between mb-1">
           <span className="text-neutral-500">총 주문건</span>
-          <span>{orders.filter((o) => o.payment_status !== "주문취소(미입금)").length}건</span>
+          <span>{orders.filter((o) => o.payment_status !== "주문취소(미입금)" && !o.cancelled_at).length}건</span>
         </div>
         <div className="flex justify-between mb-1">
           <span className="text-neutral-500">입금확인대기</span>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatWon, normalizePhone } from "@/lib/format";
+import PoweredByFooter from "@/components/PoweredByFooter";
 
 export default function PayView({
   campaignId,
@@ -98,6 +99,7 @@ export default function PayView({
       >
         내 주문 조회하러 가기
       </Link>
+      <PoweredByFooter />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { formatWon, formatPhone } from "@/lib/format";
 import BuyerNav from "@/components/BuyerNav";
+import PoweredByFooter from "@/components/PoweredByFooter";
 
 type OrderResult = {
   id: string;
@@ -15,6 +16,7 @@ type OrderResult = {
   delivery_photo_url: string | null;
   created_at: string;
   payment_deadline: string | null;
+  cancel_reason: string | null;
   bank_name: string | null;
   account_number: string | null;
   account_holder: string | null;
@@ -105,11 +107,26 @@ function getStepIndex(o: OrderResult): number {
   return 1;
 }
 
+// 취소 사유(cancel_reason)에 따라 다른 안내 문구를 보여준다.
+// 값이 없는 과거 데이터(v22 이전 취소건)는 기존처럼 뭉뚱그린 문구로 폴백한다.
+function cancelReasonLabel(reason: string | null): string {
+  switch (reason) {
+    case "auto_unpaid":
+      return "미입금으로 자동취소됨";
+    case "seller_cancelled":
+      return "판매자에 의해 취소됨";
+    case "noshow_onsite":
+      return "미수령(노쇼)으로 취소됨";
+    default:
+      return "주문취소(미입금)";
+  }
+}
+
 function StatusStepper({ order }: { order: OrderResult }) {
   if (order.payment_status === "주문취소(미입금)") {
     return (
       <div className="bg-red-50 rounded-lg p-3 text-center">
-        <p className="text-[13px] text-red-600 font-medium">주문취소(미입금)</p>
+        <p className="text-[13px] text-red-600 font-medium">{cancelReasonLabel(order.cancel_reason)}</p>
       </div>
     );
   }
@@ -209,6 +226,7 @@ export default function LookupClient({
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [orders, setOrders] = useState<OrderResult[] | null>(null);
+  const [noticeText, setNoticeText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function search() {
@@ -227,6 +245,7 @@ export default function LookupClient({
         return;
       }
       setOrders(data.orders);
+      setNoticeText(data.noticeText ?? null);
     } catch {
       setError("네트워크 오류가 발생했습니다.");
     }
@@ -237,6 +256,11 @@ export default function LookupClient({
     return (
       <main className="max-w-md mx-auto p-5 flex flex-col gap-3">
         <BuyerNav campaignId={campaignId} active="lookup" />
+        {noticeText && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-[13px] text-amber-800 whitespace-pre-wrap">
+            📢 {noticeText}
+          </div>
+        )}
         {orders.map((o) => (
           <div
             key={o.id}
@@ -272,7 +296,7 @@ export default function LookupClient({
                 {o.payment_status === "입금확인완료"
                   ? "결제완료"
                   : o.payment_status === "주문취소(미입금)"
-                  ? "취소됨"
+                  ? cancelReasonLabel(o.cancel_reason)
                   : o.payment_method === "현장결제"
                   ? "현장에서 결제 예정"
                   : "입금 확인 중"}
@@ -360,6 +384,7 @@ export default function LookupClient({
           )}
         </div>
       </div>
+      <PoweredByFooter />
     </main>
   );
 }

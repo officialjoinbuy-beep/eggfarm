@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import CampaignListClient from "./CampaignListClient";
 import StaffManagementClient from "./StaffManagementClient";
 import NoshowManagementClient from "./NoshowManagementClient";
 import DelegationBanner from "./DelegationBanner";
 import TrialUsageBanner from "./TrialUsageBanner";
+import KakaoConnectBanner from "./KakaoConnectBanner";
+import ReferralShareCard from "./ReferralShareCard";
 
 export default function AdminHomeClient() {
   const router = useRouter();
@@ -31,6 +34,8 @@ export default function AdminHomeClient() {
 
       <DelegationBanner />
       <TrialUsageBanner />
+      <KakaoConnectBanner />
+      <ReferralShareCard />
 
       <div className="flex gap-1.5 mb-5 bg-neutral-100 rounded-lg p-1">
         <button
@@ -57,6 +62,12 @@ export default function AdminHomeClient() {
         >
           노쇼 관리
         </button>
+        <Link
+          href="/admin/reports"
+          className="flex-1 text-[13px] py-2 rounded text-neutral-500 flex items-center justify-center"
+        >
+          매출 리포트
+        </Link>
       </div>
 
       {tab === "campaigns" && <CampaignListClient />}
