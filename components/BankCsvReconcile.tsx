@@ -32,11 +32,11 @@ export default function BankCsvReconcile({
     setError(null);
     setResult(null);
     setSupportedBanks(null);
-    const csvText = await file.text();
+    const formData = new FormData();
+    formData.append("file", file);
     const res = await fetch(`/api/admin/campaigns/${campaignId}/reconcile-csv`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ csvText }),
+      body: formData,
     });
     const data = await res.json();
     setLoading(false);
@@ -51,15 +51,15 @@ export default function BankCsvReconcile({
 
   return (
     <div className="border rounded-lg p-3 mb-3">
-      <p className="text-[13px] font-medium mb-1">입금대조 CSV 업로드</p>
+      <p className="text-[13px] font-medium mb-1">입금대조 파일 업로드</p>
       <p className="text-[11px] text-neutral-400 mb-2.5">
-        현재 지원 가능한 은행: {SUPPORTED_BANKS_LABEL} — 은행 앱에서 거래내역을 CSV로
-        내려받아 올려주세요.
+        현재 지원 가능한 은행: {SUPPORTED_BANKS_LABEL} — 은행 앱에서 거래내역을 CSV
+        또는 엑셀로 내려받아 올려주세요.
       </p>
       <input
         ref={fileRef}
         type="file"
-        accept=".csv,text/csv"
+        accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         className="hidden"
         onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
       />
@@ -68,7 +68,7 @@ export default function BankCsvReconcile({
         disabled={loading}
         className="w-full border rounded-lg py-2 text-[13px] disabled:opacity-50"
       >
-        {loading ? "대조 중..." : "CSV 파일 선택"}
+        {loading ? "대조 중..." : "파일 선택"}
       </button>
 
       {error && (

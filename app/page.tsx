@@ -56,6 +56,9 @@ export default async function Home({
       {/* 히어로 */}
       <section className="max-w-2xl mx-auto px-5 text-center pt-16 pb-14">
         <p className="text-[13px] text-neutral-400 mb-2">오더모아 OrderMoa</p>
+        <span className="inline-block bg-amber-100 text-amber-700 text-[11px] px-2.5 py-1 rounded-full mb-3">
+          🚧 베타 서비스 · 활발히 개발 중이에요
+        </span>
         <h1 className="text-[26px] sm:text-[30px] font-medium leading-snug mb-3">
           공동구매 오픈채팅 운영하면서
           <br />

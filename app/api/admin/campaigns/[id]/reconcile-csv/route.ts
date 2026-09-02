@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { normalizePhone } from "@/lib/format";
-import { parseBankCsv, extractDigits, SUPPORTED_BANKS } from "@/lib/bank-csv";
+import { parseBankFile, extractDigits, SUPPORTED_BANKS } from "@/lib/bank-csv";
 
-// 은행 거래내역 CSV를 업로드하면, 대기중인 주문의 "추천 입금자명"(전화번호
-// 뒷자리)+금액과 자동으로 대조한다. 완전히 일치하는 건은 그 자리에서
-// 입금확인 처리하고, 애매한 건(이름은 다른데 금액만 같은 경우 등)은 후보로
-// 남겨 진행자가 직접 확인하게 한다.
+// 은행 거래내역 파일(CSV 또는 엑셀)을 업로드하면, 대기중인 주문의
+// "추천 입금자명"(전화번호 뒷자리)+금액과 자동으로 대조한다. 완전히
+// 일치하는 건은 그 자리에서 입금확인 처리하고, 애매한 건(이름은 다른데
+// 금액만 같은 경우 등)은 후보로 남겨 진행자가 직접 확인하게 한다.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: campaignId } = await params;
-  const { csvText } = (await req.json()) as { csvText?: string };
-  if (!csvText) {
-    return NextResponse.json({ error: "CSV 내용이 비어있습니다." }, { status: 400 });
+  const formData = await req.formData();
+  const file = formData.get("file") as File | null;
+  if (!file) {
+    return NextResponse.json({ error: "파일이 비어있습니다." }, { status: 400 });
   }
+  const buffer = await file.arrayBuffer();
 
   const supabase = await createClient();
   const {
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "권한이 없습니다." }, { status: 403 });
   }
 
-  const { bank, transactions } = parseBankCsv(csvText);
+  const { bank, transactions } = parseBankFile(buffer);
   if (!bank) {
     return NextResponse.json(
       {

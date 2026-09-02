@@ -14,7 +14,18 @@ export default function KakaoConnectBanner() {
       .then((data) => setConnected(!!data?.connected));
   }, []);
 
-  if (connected !== false || dismissed) return null;
+  if (connected === null || dismissed) return null;
+
+  if (connected) {
+    return (
+      <div className="flex items-center justify-between text-[11px] text-neutral-400 mb-4 px-0.5">
+        <span>✓ 카카오 알림 연동됨</span>
+        <a href="/api/kakao/authorize" className="underline">
+          알림이 안 온다면 재연결
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-yellow-50 rounded-lg px-3.5 py-2.5 mb-4 text-[12px]">

@@ -53,7 +53,8 @@ export default function SignupForm() {
       .catch(() => {});
   }, []);
 
-  async function signup() {
+  async function signup(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     if (hasPlusTrick(email)) {
       setError("이메일 주소에 '+' 기호는 사용할 수 없습니다.");
@@ -100,7 +101,7 @@ export default function SignupForm() {
 
   return (
     <main className="max-w-md mx-auto p-5">
-      <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
+      <form onSubmit={signup} className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
         <p className="text-[16px] font-medium mb-5">회원가입</p>
         {repeatDeviceWarning && (
           <p className="text-[12px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3.5 text-left">
@@ -110,7 +111,8 @@ export default function SignupForm() {
         )}
         {referralCode && (
           <p className="text-[12px] text-neutral-500 bg-white border rounded-lg px-3 py-2 mb-3.5 text-left">
-            🎁 친구 추천으로 가입하시는군요! 첫 공구를 만들면 추천인에게 크레딧이 지급돼요.
+            🎁 친구 추천으로 가입하시는군요! 첫 공구를 만들면 추천인과 회원님 모두에게 3회씩
+            크레딧이 지급돼요.
           </p>
         )}
         <div className="flex flex-col gap-2.5 text-left mb-3.5">
@@ -145,7 +147,7 @@ export default function SignupForm() {
             취소
           </Link>
           <button
-            onClick={signup}
+            type="submit"
             disabled={loading || !email || password.length < 8 || !phoneDisplay}
             className="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-40 flex items-center justify-center"
           >
@@ -159,7 +161,7 @@ export default function SignupForm() {
             로그인하기
           </Link>
         </p>
-      </div>
+      </form>
     </main>
   );
 }

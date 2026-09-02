@@ -39,7 +39,7 @@ export default function ReferralShareCard() {
     <div className="bg-neutral-50 rounded-lg px-3.5 py-3 mb-4">
       <p className="text-[13px] font-medium mb-1">🎁 친구에게 추천하고 크레딧 받기</p>
       <p className="text-[12px] text-neutral-500 mb-2">
-        아래 링크로 가입한 친구가 첫 공구를 만들면, 3회 크레딧을 드려요.
+        아래 링크로 가입한 친구가 첫 공구를 만들면, 친구와 나 둘 다 3회씩 크레딧을 받아요.
       </p>
       <button
         onClick={copy}

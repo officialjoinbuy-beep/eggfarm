@@ -9,7 +9,10 @@ import StaffLinkManager from "@/components/StaffLinkManager";
 import QrScanModal from "@/components/QrScanModal";
 import SignaturePad from "@/components/SignaturePad";
 import Spinner from "@/components/Spinner";
-import BankCsvReconcile from "@/components/BankCsvReconcile";
+// 입금대조 CSV/엑셀 업로드(BankCsvReconcile)는 실제 은행 파일 형식 검증이
+// 더 필요해 대시보드 노출을 잠시 뺐다. 컴포넌트/API는 그대로 남겨뒀으니
+// 검증 끝나면 아래 두 줄만 다시 활성화하면 된다.
+// import BankCsvReconcile from "@/components/BankCsvReconcile";
 
 type Order = {
   id: string;
@@ -870,7 +873,6 @@ export default function Dashboard({ campaignId }: { campaignId: string }) {
           )}
         </>
       )}
-      <BankCsvReconcile campaignId={campaignId} onConfirmed={load} />
       <a
         href={`/api/admin/campaigns/${campaignId}/export`}
         className="block w-full mt-2 text-center border rounded-lg py-2.5 text-sm"
