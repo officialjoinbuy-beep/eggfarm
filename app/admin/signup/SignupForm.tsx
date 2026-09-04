@@ -91,8 +91,21 @@ export default function SignupForm() {
       <main className="max-w-md mx-auto p-5">
         <div className="bg-neutral-50 rounded-2xl p-6 border border-neutral-200 text-center">
           <p className="text-[15px] font-medium mb-2">가입 확인 메일을 보냈어요</p>
-          <p className="text-[13px] text-neutral-500">
+          <p className="text-[13px] text-neutral-500 mb-4">
             받은 메일함에서 인증 후 로그인해주세요.
+          </p>
+          <p className="text-[12px] text-neutral-400 leading-relaxed">
+            참고로, 메일이 몇 분 안에 안 보이면 스팸함도 확인해보세요.
+            <br />
+            혹시 이미 쓰던 계정이라면{" "}
+            <Link href="/admin/login" className="underline text-neutral-500">
+              로그인
+            </Link>
+            , 비밀번호가 기억 안 나면{" "}
+            <Link href="/admin/forgot-password" className="underline text-neutral-500">
+              비밀번호 재설정
+            </Link>
+            을 이용해주세요.
           </p>
         </div>
       </main>

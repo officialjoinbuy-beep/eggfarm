@@ -69,6 +69,11 @@ export default function LoginPage() {
             회원가입
           </a>
         </p>
+        <p className="text-[12px] text-neutral-400 mt-1.5">
+          <a href="/admin/forgot-password" className="underline">
+            비밀번호를 잊으셨나요?
+          </a>
+        </p>
       </form>
     </main>
   );
