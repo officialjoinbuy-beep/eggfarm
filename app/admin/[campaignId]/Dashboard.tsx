@@ -1251,22 +1251,31 @@ function PhotoUploadModal({
     }
 
     setUploading(true);
-    const watermarked = await watermarkImage(file);
-    const formData = new FormData();
-    formData.append("photo", watermarked, "delivery.jpg");
-    if (selectedExtras.size > 0) {
-      formData.append("extraOrderIds", JSON.stringify(Array.from(selectedExtras)));
+    try {
+      const watermarked = await watermarkImage(file);
+      const formData = new FormData();
+      formData.append("photo", watermarked, "delivery.jpg");
+      if (selectedExtras.size > 0) {
+        formData.append("extraOrderIds", JSON.stringify(Array.from(selectedExtras)));
+      }
+      const res = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        alert(
+          res.status === 413
+            ? "사진 용량이 너무 커서 업로드에 실패했어요. 다시 촬영하거나 다른 사진으로 시도해주세요."
+            : "업로드에 실패했습니다."
+        );
+        return;
+      }
+      onDone();
+    } catch {
+      alert("사진 처리 중 오류가 발생했어요. 다시 시도해주세요.");
+    } finally {
+      setUploading(false);
     }
-    const res = await fetch(endpoint, {
-      method: "POST",
-      body: formData,
-    });
-    setUploading(false);
-    if (!res.ok) {
-      alert("업로드에 실패했습니다.");
-      return;
-    }
-    onDone();
   }
 
   return (
@@ -1308,7 +1317,6 @@ function PhotoUploadModal({
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
         />

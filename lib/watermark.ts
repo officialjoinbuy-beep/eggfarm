@@ -3,11 +3,20 @@
 // 워터마크만 남고, 동호수 등은 화면 오버레이로만 표시되어 파일엔 남지 않는다.
 export async function watermarkImage(file: File): Promise<Blob> {
   const img = await loadImage(file);
+
+  // 아이폰 카메라로 바로 찍은 사진은 원본 해상도가 매우 커서(예: 4000px 이상),
+  // 워터마크만 입혀 그대로 올리면 파일 용량이 서버 업로드 제한을 넘어 실패할 수
+  // 있었다. 화면/증빙 용도로는 충분한 크기로 다운스케일한다.
+  const MAX_DIMENSION = 1600;
+  const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
+  const targetWidth = Math.round(img.width * scale);
+  const targetHeight = Math.round(img.height * scale);
+
   const canvas = document.createElement("canvas");
-  canvas.width = img.width;
-  canvas.height = img.height;
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
   const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(img, 0, 0);
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
   const now = new Date();
   const label = now
